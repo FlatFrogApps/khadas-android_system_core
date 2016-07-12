@@ -36,6 +36,12 @@
 #include <log/logprint.h>
 #include <utils/threads.h>
 
+// aml Android Patch Begin
+#include <sys/klog.h>
+#include <cutils/properties.h>
+// aml Android Patch End
+
+#define DEFAULT_LOG_ROTATE_SIZE_KBYTES 16
 #define DEFAULT_MAX_ROTATED_LOGS 4
 
 static AndroidLogFormat * g_logformat;
@@ -76,11 +82,23 @@ static size_t g_outByteCount = 0;
 static int g_printBinary = 0;
 static int g_devCount = 0;                              // >1 means multiple
 
+// aml Android Patch Begin
+static int g_kmsg = 0;
+// aml Android Patch End
 __noreturn static void logcat_panic(bool showHelp, const char *fmt, ...) __printflike(2,3);
+
+//aml patch begin
+static int g_aml_log_filter = 0;
+static char g_aml_filters[100];
+//aml patch end
 
 static int openLogFile (const char *pathname)
 {
-    return open(pathname, O_WRONLY | O_APPEND | O_CREAT, S_IRUSR | S_IWUSR);
+    char attr[1024] = {0};
+    int ret = open(pathname, O_WRONLY | O_APPEND | O_CREAT, S_IRUSR | S_IWUSR);
+    sprintf(attr, "chmod 664 %s", pathname);
+    system (attr);
+    return ret;
 }
 
 static void rotateLogs()
@@ -206,6 +224,62 @@ static void maybePrintStart(log_device_t* dev, bool printDividers) {
     }
 }
 
+// aml Android Patch Begin
+static int printKernelBuffer(char *buf, int count) {
+    int bytesWritten = 0;
+    AndroidLogEntry entry;
+    char tag[10]="Kernel";
+    int prio = 0;
+    char *buffer = buf;
+    char *next = NULL;
+    struct timespec ts;
+
+    while (buffer < (buf + count)) {
+        if (buffer[0] != '<') {
+            next = strchr(buffer, '<');
+            if (next == NULL) {
+                next = buf + count;
+            }
+        } else {
+            if (sscanf(buffer, "<%d>", &prio) < 0)
+                break;
+
+            next = strchr(buffer, '\n');
+            if (next == NULL) {
+                next = buf + count;
+            } else {
+                next++;
+            }
+            entry.priority = ANDROID_LOG_INFO;
+        }
+
+        clock_gettime(CLOCK_REALTIME, &ts);
+        entry.tv_sec  = ts.tv_sec;
+        entry.tv_nsec = ts.tv_nsec;
+        entry.pid = 0;
+        entry.tid = 0;
+        entry.tag = tag;
+        entry.messageLen =  next - buffer;
+        entry.message = buffer;
+
+        bytesWritten = android_log_printLogLine(g_logformat, g_outFD, &entry);
+        if (bytesWritten < 0) {
+            perror("output error");
+            exit(-1);
+        }
+        g_outByteCount += bytesWritten;
+        buffer = next;
+    }
+
+
+    if ((g_logRotateSizeKBytes > 0) && ((g_outByteCount/1024) >= g_logRotateSizeKBytes)) {
+        rotateLogs();
+    }
+
+    return bytesWritten;
+}
+// aml Android Patch End
+
 static void setupOutput()
 {
 
@@ -271,6 +345,10 @@ static void show_help(const char *cmd)
                     "                  count is pure numerical, time is 'MM-DD hh:mm:ss.mmm'\n"
                     "  -g              get the size of the log's ring buffer and exit\n"
                     "  -L              dump logs from prior to last reboot\n"
+                    // aml Android Patch Begin
+                    "  -K              dump kernel log by klogctl, this operation need super user\n"
+                    "                  permission.\n"
+                    // aml Android Patch End
                     "  -b <buffer>     Request alternate ring buffer, 'main', 'system', 'radio',\n"
                     "                  'events', 'crash' or 'all'. Multiple -b parameters are\n"
                     "                  allowed and results are interleaved. The default is\n"
@@ -491,9 +569,9 @@ int main(int argc, char **argv)
 
     for (;;) {
         int ret;
-
-        ret = getopt(argc, argv, ":cdDLt:T:gG:sQf:r:n:v:b:BSpP:");
-
+        // aml Android Patch Begin
+        ret = getopt(argc, argv, ":cdDLt:T:gG:sQf:r:n:v:b:BSpP:KM");
+        // aml Android Patch End
         if (ret < 0) {
             break;
         }
@@ -553,6 +631,12 @@ int main(int argc, char **argv)
             case 'g':
                 getLogSize = 1;
             break;
+
+            // aml Android Patch Begin
+            case 'K':
+                android::g_kmsg = 1;
+            break;
+            // aml Android Patch End
 
             case 'G': {
                 char *cp;
@@ -747,7 +831,14 @@ int main(int argc, char **argv)
             case 'S':
                 printStatistics = 1;
                 break;
-
+            case 'M'://aml patch
+                /* this is a *hidden* option used to log output control for aml
+                    don't use property, maybe property system not ready here*/
+                {
+                    android::g_aml_log_filter = 1;
+                    strcpy(android::g_aml_filters,"*:V");
+                }
+                break;
             case ':':
                 logcat_panic(true, "Option -%c needs an argument\n", optopt);
                 break;
@@ -840,6 +931,9 @@ int main(int argc, char **argv)
             if (ret) {
                 logcat_panic(false, "failed to clear the log");
             }
+            // aml Android Patch Begin
+            klogctl(KLOG_CLEAR, 0, 0);
+            // aml Android Patch End
         }
 
         if (setLogSize && android_logger_set_log_size(dev->logger, setLogSize)) {
@@ -956,7 +1050,73 @@ int main(int argc, char **argv)
 
     dev = NULL;
     log_device_t unexpected("unexpected", false);
+
+    // aml Android Patch Begin
+    if (android::g_kmsg) {
+        char *kernelBuf = NULL;
+        int ret, klogBufLen;
+
+        klogBufLen = klogctl(KLOG_SIZE_UNREAD, 0, 0);
+        if (klogBufLen == 0) {
+            /*
+            * buffer len is zero means this is not the first time to invoke logcat
+            * but we need to get kernel log that read last time. so read all log here.
+            */
+            klogBufLen = klogctl(KLOG_SIZE_BUFFER, 0, 0);
+            kernelBuf = (char *)malloc(klogBufLen + 1);
+            if ((ret = klogctl(KLOG_READ_ALL, kernelBuf, klogBufLen)) > 0) {
+                kernelBuf[ret] = '\n';
+                if (android::printKernelBuffer(kernelBuf, ret) < 0) {
+                    perror ("write kernel log error");
+                }
+            }
+        } else {
+            kernelBuf = (char *)malloc(klogBufLen + 1);
+            if ((ret = klogctl(KLOG_READ, kernelBuf, klogBufLen)) > 0) {
+                kernelBuf[ret] = '\n';
+                if (android::printKernelBuffer(kernelBuf, ret) < 0) {
+                    perror ("write kernel log error");
+                }
+            }
+        }
+
+        if (NULL != kernelBuf)
+            free(kernelBuf);
+    }
+    // aml Android Patch End
+
+    int filterLoop = 0;
     while (1) {
+        // aml Android Patch Begin
+        if (android::g_kmsg) {
+            int ret = 0;
+            char kernelBuf[1024] = {0};
+            if ((ret = klogctl(KLOG_SIZE_UNREAD, kernelBuf, sizeof(kernelBuf))) > 0) {
+                if ((ret = klogctl(KLOG_READ, kernelBuf, sizeof(kernelBuf))) > 0) {
+                    if (android::printKernelBuffer(kernelBuf, ret) < 0) {
+                        perror("write kernel log error");
+                    }
+                }
+            }
+        }
+        // aml Android Patch End
+
+        if (android::g_aml_log_filter == 1) {
+            filterLoop++;
+            if (filterLoop > 50) {
+                filterLoop = 0;
+                char contents[100];
+                property_get("persist.sys.logcat.filter", contents, "*:V");
+                if (strcmp(android::g_aml_filters, contents) != 0) {
+                    char FilterChange[100];
+                    snprintf(FilterChange, sizeof(FilterChange), "aml logcat filter change from %s to %s\n", android::g_aml_filters, contents);
+                    android::printKernelBuffer(FilterChange, strlen(FilterChange)+1);
+                    strcpy(android::g_aml_filters, contents);
+                    android_log_addFilterString(g_logformat, contents);
+                }
+            }
+        }
+
         struct log_msg log_msg;
         log_device_t* d;
         int ret = android_logger_list_read(logger_list, &log_msg);
