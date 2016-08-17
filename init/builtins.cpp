@@ -855,7 +855,9 @@ int do_confirm_formated(int nargs, char **args) {
     char dev[128];
     char mountpoint[128];
 
-    if ( nargs != 4 ) {
+    unsigned block_size, bytes_per_inode;
+
+    if ( (nargs != 4) && (nargs != 6) ) {
         ERROR("do_confirm_formated nargs is not valid, nargs:%d\n", nargs);
         return -1;
     }
@@ -863,13 +865,26 @@ int do_confirm_formated(int nargs, char **args) {
     strcpy( dev, args[2] );
     strcpy( mountpoint, args[3]);
 
+    if (nargs == 6) {
+        ERROR("blocksize %s, bytes_per_inode %s\n", args[4], args[5]);
+        block_size = (unsigned) atoi(args[4]);
+        if ((block_size % 1024 != 0) || block_size > 8192)
+            block_size = 4096;
+        bytes_per_inode = (unsigned) atoi(args[5]);
+        if (bytes_per_inode < block_size)
+            bytes_per_inode = block_size;
+    }
     if ( !strncmp( args[1], "ext4", 4 ) ) {
         ERROR("do_confirm_formated ext4 try mount\n");
         int result = mount(dev, mountpoint, "ext4", flags, options);
         if ( result != 0 ) {
             ERROR("do_confirm_formated mount fail,maybe firstboot, need format, try format now, dev:%s, mountpoint:%s\n", dev, mountpoint);
             int fd = -1;
-            result = make_ext4fs(dev, 0, mountpoint, sehandle);
+            if (nargs == 4)
+                result = make_ext4fs(dev, 0, mountpoint, sehandle);
+            else
+                result = make_ext4fs_bisize(dev, 0, mountpoint, sehandle,
+                    block_size, bytes_per_inode);
 
             if (result != 0) {
                 ERROR("do_confirm_formated mount make_extf4fs fail on %s, err[%s]\n", dev, strerror(errno));
