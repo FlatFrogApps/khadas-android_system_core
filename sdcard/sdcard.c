@@ -41,6 +41,7 @@
 #include <cutils/hashmap.h>
 #include <cutils/log.h>
 #include <cutils/multiuser.h>
+#include <cutils/properties.h>
 
 #include <private/android_filesystem_config.h>
 
@@ -77,6 +78,7 @@
  */
 
 #define FUSE_TRACE 0
+#define LIMIT_SDCARD_SIZE
 
 #if FUSE_TRACE
 #define TRACE(x...) ALOGD(x)
@@ -102,6 +104,10 @@
 /* Pseudo-error constant used to indicate that no fuse status is needed
  * or that a reply has already been written. */
 #define NO_STATUS 1
+
+#ifdef LIMIT_SDCARD_SIZE
+__u64 internal_sdcard_free_size_threshold = 100 * 1024 * 1024;
+#endif
 
 /* Path to system-provided mapping of package name to appIds */
 static const char* const kPackagesListFile = "/data/system/packages.list";
@@ -233,6 +239,10 @@ struct fuse {
 
     gid_t gid;
     mode_t mask;
+
+    #ifdef LIMIT_SDCARD_SIZE
+    __u64 free_size;
+    #endif
 };
 
 /* Private data used by a single FUSE handler */
@@ -1268,6 +1278,29 @@ static int handle_write(struct fuse* fuse, struct fuse_handler* handler,
 
     TRACE("[%d] WRITE %p(%d) %u@%"PRIu64"\n", handler->token,
             h, h->fd, req->size, req->offset);
+    #ifdef LIMIT_SDCARD_SIZE
+    if (!strncmp(fuse->global->source_path, "/data/media", PATH_MAX)) {
+        pthread_mutex_lock(&fuse->global->lock);
+        fuse->free_size -= req->size;
+        pthread_mutex_unlock(&fuse->global->lock);
+
+        if (fuse->free_size <= internal_sdcard_free_size_threshold) {
+            struct statfs stat;
+            if (statfs(fuse->global->source_path, &stat) < 0) {
+                ERROR("get %s fs status fail \n", fuse->global->source_path);
+                fuse->free_size = 0;
+                return -errno;
+            } else {
+                pthread_mutex_lock(&fuse->global->lock);
+                fuse->free_size = stat.f_bfree * stat.f_bsize;
+                pthread_mutex_unlock(&fuse->global->lock);
+            }
+            errno = ENOSPC;
+            TRACE("[fuse_debug]fuse.free_size = %lld, no space for write!\n", fuse->free_size);
+            return -errno;
+        }
+    }
+    #endif
     res = pwrite64(h->fd, buffer, req->size, req->offset);
     if (res < 0) {
         return -errno;
@@ -1908,6 +1941,29 @@ static void run(const char* source_path, const char* label, uid_t uid,
         fs_prepare_dir(global.obb_path, 0775, uid, gid);
     }
 
+    #ifdef LIMIT_SDCARD_SIZE
+    struct statfs stat;
+    char value[PROPERTY_VALUE_MAX];
+    int reserv_size;
+    if (statfs(global.source_path, &stat) < 0) {
+        ERROR("get %s fs status fail \n", global.source_path);
+        fuse_default.free_size = 0;
+        fuse_read.free_size = 0;
+        fuse_write.free_size = 0;
+    } else {
+        fuse_default.free_size = stat.f_bfree * stat.f_bsize;
+        fuse_read.free_size = stat.f_bfree * stat.f_bsize;
+        fuse_write.free_size = stat.f_bfree * stat.f_bsize;
+        TRACE("[fuse_debug]fuse.free_size = %lld \n", fuse_default.free_size);
+    }
+
+    property_get("ro.sdcard.ReservSize", value, "100");
+    if (sscanf(value, "%d", &reserv_size) == 1 && reserv_size > 0) {
+        internal_sdcard_free_size_threshold = reserv_size * 1024 *1024;
+        TRACE("[fuse_debug]ro.sdcard.ReservSize = %d \n", reserv_size);
+    }
+
+    #endif
     if (pthread_create(&thread_default, NULL, start_handler, &handler_default)
             || pthread_create(&thread_read, NULL, start_handler, &handler_read)
             || pthread_create(&thread_write, NULL, start_handler, &handler_write)) {
