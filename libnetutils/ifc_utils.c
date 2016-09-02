@@ -174,7 +174,8 @@ int ifc_get_hwaddr(const char *name, void *ptr)
     int r;
     struct ifreq ifr;
     ifc_init_ifr(name, &ifr);
-
+    if (ifc_ctl_sock == -1)
+       ifc_init();
     r = ioctl(ifc_ctl_sock, SIOCGIFHWADDR, &ifr);
     if(r < 0) return -1;
 
@@ -187,7 +188,8 @@ int ifc_get_ifindex(const char *name, int *if_indexp)
     int r;
     struct ifreq ifr;
     ifc_init_ifr(name, &ifr);
-
+    if (ifc_ctl_sock == -1)
+       ifc_init();
     r = ioctl(ifc_ctl_sock, SIOCGIFINDEX, &ifr);
     if(r < 0) return -1;
 
@@ -200,6 +202,8 @@ static int ifc_set_flags(const char *name, unsigned set, unsigned clr)
     struct ifreq ifr;
     ifc_init_ifr(name, &ifr);
 
+    if (ifc_ctl_sock == -1)
+        ifc_init();
     if(ioctl(ifc_ctl_sock, SIOCGIFFLAGS, &ifr) < 0) return -1;
     ifr.ifr_flags = (ifr.ifr_flags & (~clr)) | set;
     return ioctl(ifc_ctl_sock, SIOCSIFFLAGS, &ifr);
@@ -234,7 +238,8 @@ int ifc_set_addr(const char *name, in_addr_t addr)
 
     ifc_init_ifr(name, &ifr);
     init_sockaddr_in(&ifr.ifr_addr, addr);
-
+    if (ifc_ctl_sock == -1)
+        ifc_init();
     ret = ioctl(ifc_ctl_sock, SIOCSIFADDR, &ifr);
     if (DBG) printerr("ifc_set_addr(%s, xx) = %d", name, ret);
     return ret;
@@ -426,6 +431,8 @@ int ifc_set_hwaddr(const char *name, const void *ptr)
 
     ifr.ifr_hwaddr.sa_family = ARPHRD_ETHER;
     memcpy(&ifr.ifr_hwaddr.sa_data, ptr, ETH_ALEN);
+    if (ifc_ctl_sock == -1)
+        ifc_init();
     return ioctl(ifc_ctl_sock, SIOCSIFHWADDR, &ifr);
 }
 
@@ -436,7 +443,8 @@ int ifc_set_mask(const char *name, in_addr_t mask)
 
     ifc_init_ifr(name, &ifr);
     init_sockaddr_in(&ifr.ifr_addr, mask);
-
+    if (ifc_ctl_sock == -1)
+        ifc_init();
     ret = ioctl(ifc_ctl_sock, SIOCSIFNETMASK, &ifr);
     if (DBG) printerr("ifc_set_mask(%s, xx) = %d", name, ret);
     return ret;
@@ -452,6 +460,8 @@ int ifc_set_prefixLength(const char *name, int prefixLength)
     ifc_init_ifr(name, &ifr);
     init_sockaddr_in(&ifr.ifr_addr, mask);
 
+    if (ifc_ctl_sock == -1)
+        ifc_init();
     return ioctl(ifc_ctl_sock, SIOCSIFNETMASK, &ifr);
 }
 
@@ -462,6 +472,8 @@ int ifc_get_addr(const char *name, in_addr_t *addr)
 
     ifc_init_ifr(name, &ifr);
     if (addr != NULL) {
+        if (ifc_ctl_sock == -1)
+            ifc_init();
         ret = ioctl(ifc_ctl_sock, SIOCGIFADDR, &ifr);
         if (ret < 0) {
             *addr = 0;
@@ -476,7 +488,8 @@ int ifc_get_info(const char *name, in_addr_t *addr, int *prefixLength, unsigned 
 {
     struct ifreq ifr;
     ifc_init_ifr(name, &ifr);
-
+    if (ifc_ctl_sock == -1)
+        ifc_init();
     if (addr != NULL) {
         if(ioctl(ifc_ctl_sock, SIOCGIFADDR, &ifr) < 0) {
             *addr = 0;
