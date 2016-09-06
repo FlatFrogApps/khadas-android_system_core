@@ -131,6 +131,7 @@ static int lookup_keyword(const char *s)
         if (!strcmp(s, "hmod")) return K_chmod;
         if (!strcmp(s, "ritical")) return K_critical;
         if (!strcmp(s, "onfirm_formated")) return K_confirm_formated;
+        if (!strcmp(s, "onfirm_formated_ext")) return K_confirm_formated_ext;
         break;
     case 'd':
         if (!strcmp(s, "isabled")) return K_disabled;
