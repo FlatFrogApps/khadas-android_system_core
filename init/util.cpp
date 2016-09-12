@@ -464,17 +464,6 @@ int restorecon_recursive(const char* pathname)
     return selinux_android_restorecon(pathname, SELINUX_ANDROID_RESTORECON_RECURSE);
 }
 
-//if boot completed, we should clear first boot flag if it is the first boot
-void clear_firstboot_flag() {
-    bootenv_init();
-    const char* first_boot = bootenv_get("ubootenv.var.firstboot");
-    if ( first_boot && ( strcmp(first_boot, "1") == 0 ) ) {
-        ERROR("clear_firstboot_flag first_boot:%s, clear it to 0\n", first_boot);
-        if ( bootenv_update("ubootenv.var.firstboot", "0") < 0 ) {
-            ERROR("clear_firstboot_flag set firstboot to 0 fail\n");
-        }
-    }
-}
 /*
  * Writes hex_len hex characters (1/2 byte) to hex from bytes.
  */

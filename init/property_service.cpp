@@ -229,12 +229,8 @@ static int property_set_impl(const char* name, const char* value) {
         }
     }
 
-    if ( strncmp("sys.boot_completed", name, strlen("sys.boot_completed")) == 0 &&
-        strcmp("1", value) == 0 ) {
-        clear_firstboot_flag();
-    }
     /* If name starts with "net." treat as a DNS property. */
-    else if (strncmp("net.", name, strlen("net.")) == 0)  {
+    if (strncmp("net.", name, strlen("net.")) == 0)  {
         if (strcmp("net.change", name) == 0) {
             return 0;
         }
