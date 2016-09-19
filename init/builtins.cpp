@@ -62,6 +62,7 @@
 #include "service.h"
 #include "signal_handler.h"
 #include "util.h"
+#include "make_ext4fs.h"
 
 #define chmod DO_NOT_USE_CHMOD_USE_FCHMODAT_SYMLINK_NOFOLLOW
 #define UNMOUNT_CHECK_MS 5000
@@ -905,6 +906,75 @@ static int do_wait(const std::vector<std::string>& args) {
         return -1;
 }
 
+int do_confirm_formated(const std::vector<std::string>& args) {
+    ERROR("enter do_confirm_formated %s, %s\n", args[2].c_str(), args[3].c_str());
+    int flags = MS_NOATIME | MS_NODIRATIME | MS_NOSUID | MS_NODEV;
+    char options[] = "noauto_da_alloc";
+
+    char dev[128];
+    char mountpoint[128];
+    unsigned block_size, bytes_per_inode;
+
+    if (args.size() != 4 && args.size() != 6) {
+        ERROR("do_confirm_formated nargs is not valid, nargs:%d\n", args.size());
+        return -1;
+    }
+
+    strncpy(dev, args[2].c_str(), sizeof(dev));
+    strncpy(mountpoint, args[3].c_str(), sizeof(mountpoint));
+
+    if (args.size() == 6) {
+        ERROR("blocksize %s, bytes_per_inode %s\n", args[4].c_str(), args[5].c_str());
+        block_size = (unsigned) atoi(args[4].c_str());
+        if ((block_size % 1024 != 0) || block_size > 8192)
+            block_size = 4096;
+        bytes_per_inode = (unsigned) atoi(args[5].c_str());
+        if (bytes_per_inode < block_size)
+            bytes_per_inode = block_size;
+    }
+
+    if (!strncmp(args[1].c_str(), "ext4", 4)) {
+        ERROR("do_confirm_formated ext4 try mount\n");
+        int result = mount(dev, mountpoint, "ext4", flags, options);
+        if ( result != 0 ) {
+            ERROR("do_confirm_formated mount fail,maybe firstboot, need format, try format now, dev:%s, mountpoint:%s\n", dev, mountpoint);
+            int fd = -1;
+            if (args.size() == 4)
+                result = make_ext4fs(dev, 0, mountpoint, sehandle);
+            else
+                result = make_ext4fs_bisize(dev, 0, mountpoint, sehandle,
+                    block_size, bytes_per_inode);
+
+            if (result != 0) {
+                ERROR("do_confirm_formated mount make_extf4fs fail on %s, err[%s]\n", dev, strerror(errno));
+                return -1;
+            }
+
+            fd = open(dev, O_RDWR);
+            if (fd > 0) {
+                fsync(fd);
+                close(fd);//sync to fs
+            }
+
+            //just try
+            result = mount(dev, mountpoint, "ext4", flags, options);
+            if ( result != 0 ) {
+                ERROR("do_confirm_formated re-mount failed on %s, %s, err[%s]\n", dev, mountpoint, strerror(errno) );
+                return -1;
+            }
+        }
+
+        if ( result == 0 ) {
+            result = umount(mountpoint);
+            if (result != 0) {
+                ERROR("do_confirm_formated, umount fail!\n");
+            }
+        }
+    }
+
+    return 0;
+}
+
 /*
  * Callback to make a directory from the ext4 code
  */
@@ -976,6 +1046,7 @@ BuiltinFunctionMap::Map& BuiltinFunctionMap::map() const {
         {"verity_update_state",     {0,     0,    do_verity_update_state}},
         {"wait",                    {1,     2,    do_wait}},
         {"write",                   {2,     2,    do_write}},
+        {"confirm_formated",        {3,     5,    do_confirm_formated}},
     };
     return builtin_functions;
 }

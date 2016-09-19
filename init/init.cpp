@@ -429,6 +429,7 @@ static void export_kernel_boot_props() {
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
         { "ro.boot.revision",   "ro.revision",   "0", },
+        { "ro.boot.firstboot",  "ro.firstboot",  "0", },
     };
     for (size_t i = 0; i < ARRAY_SIZE(prop_map); i++) {
         std::string value = property_get(prop_map[i].src_prop);
@@ -584,6 +585,18 @@ static void selinux_initialize(bool in_kernel_domain) {
     }
 }
 
+static int aml_firstbootinit()
+{
+    ActionManager& am = ActionManager::GetInstance();
+    std::string is_firstboot = property_get("ro.firstboot");
+    if (is_firstboot == "1") {
+        ERROR("aml-firstboot-init insert aml-firstboot-init\n");
+        am.QueueEventTrigger("aml-firstboot-init");
+    }
+
+    return 0;
+}
+
 int main(int argc, char** argv) {
     if (!strcmp(basename(argv[0]), "ueventd")) {
         return ueventd_main(argc, argv);
@@ -701,6 +714,8 @@ int main(int argc, char** argv) {
 
     // Trigger all the boot actions to get us started.
     am.QueueEventTrigger("init");
+
+    aml_firstbootinit();
 
     // Repeat mix_hwrng_into_linux_rng in case /dev/hw_random or /dev/random
     // wasn't ready immediately after wait_for_coldboot_done
