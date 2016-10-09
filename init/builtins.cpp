@@ -916,7 +916,7 @@ int do_confirm_formated(const std::vector<std::string>& args) {
     unsigned block_size, bytes_per_inode;
 
     if (args.size() != 4 && args.size() != 6) {
-        ERROR("do_confirm_formated nargs is not valid, nargs:%d\n", args.size());
+        ERROR("do_confirm_formated nargs is not valid, nargs:%d\n", (int)args.size());
         return -1;
     }
 
