@@ -86,6 +86,8 @@ extern struct fs_info info;
 static RSAPublicKey *load_key(const char *path)
 {
     RSAPublicKey* key = static_cast<RSAPublicKey*>(malloc(sizeof(RSAPublicKey)));
+    int key_len_words = 0;
+
     if (!key) {
         ERROR("Can't malloc key\n");
         return NULL;
@@ -105,7 +107,8 @@ static RSAPublicKey *load_key(const char *path)
         return NULL;
     }
 
-    if (key->len != RSANUMWORDS) {
+    key_len_words = key->len;
+    if (key_len_words != 32 && key_len_words != 64 && key_len_words != 128) {
         ERROR("Invalid key length %d\n", key->len);
         fclose(f);
         free(key);
@@ -136,7 +139,7 @@ static int verify_table(const uint8_t *signature, const char *table,
     // verify the result
     if (!RSA_verify(key,
                     signature,
-                    RSANUMBYTES,
+                    key->len * sizeof(uint32_t),
                     (uint8_t*) hash_buf,
                     SHA256_DIGEST_SIZE)) {
         ERROR("Couldn't verify table\n");
@@ -146,7 +149,8 @@ static int verify_table(const uint8_t *signature, const char *table,
     retval = 0;
 
 out:
-    free(key);
+    if (key)
+        free(key);
     return retval;
 }
 
@@ -624,6 +628,8 @@ static int compare_last_signature(struct fstab_rec *fstab, int *match)
     struct fec_verity_metadata verity;
     uint8_t curr[SHA256_DIGEST_SIZE];
     uint8_t prev[SHA256_DIGEST_SIZE];
+    RSAPublicKey *key = NULL;
+    int sig_len = 0;
 
     *match = 1;
 
@@ -634,6 +640,13 @@ static int compare_last_signature(struct fstab_rec *fstab, int *match)
         return rc;
     }
 
+    /* We load key here once for getting key length */
+    key = load_key(VERITY_TABLE_RSA_KEY);
+    if (!key) {
+        ERROR("Couldn't load verity keys\n");
+        goto out;
+    }
+
     // read verity metadata
     if (fec_verity_get_metadata(f, &verity) == -1) {
         ERROR("Failed to get verity metadata '%s' (%s)\n", fstab->blk_device,
@@ -641,7 +654,8 @@ static int compare_last_signature(struct fstab_rec *fstab, int *match)
         goto out;
     }
 
-    SHA256_hash(verity.signature, RSANUMBYTES, curr);
+    sig_len = key->len * sizeof(uint32_t);
+    SHA256_hash(verity.signature, sig_len, curr);
 
     if (snprintf(tag, sizeof(tag), VERITY_LASTSIG_TAG "_%s",
             basename(fstab->mount_point)) >= (int)sizeof(tag)) {
@@ -683,6 +697,8 @@ static int compare_last_signature(struct fstab_rec *fstab, int *match)
     rc = 0;
 
 out:
+    if (key)
+        free(key);
     fec_close(f);
     return rc;
 }
