@@ -939,10 +939,32 @@ int do_confirm_formated(const std::vector<std::string>& args) {
         if ( result != 0 ) {
             ERROR("do_confirm_formated mount fail,maybe firstboot, need format, try format now, dev:%s, mountpoint:%s\n", dev, mountpoint);
             int fd = -1;
+            int offset = 0;
+            unsigned int nr_sec;
+
+            if (!strcmp(mountpoint, "/data")) {
+                offset = 1*1024*1024;//if data partition leave 1*M for  crypt footer
+            }
+
+            if ((fd = open(dev, O_WRONLY, 0644)) < 0) {
+                ERROR("Cannot open block device.  %s\n", strerror(errno));
+                return -1;
+            }
+
+            if ((ioctl(fd, BLKGETSIZE, &nr_sec)) == -1) {
+                ERROR("Cannot get block device size.  %s\n", strerror(errno));
+                close(fd);
+                return -1;
+            }
+            close(fd);
+
+            long long partition_len = ((off64_t)nr_sec * 512);
+            partition_len -= offset;//if data partition leave 1*M for  crypt footer
+
             if (args.size() == 4)
-                result = make_ext4fs(dev, 0, mountpoint, sehandle);
+                result = make_ext4fs(dev, partition_len, mountpoint, sehandle);
             else
-                result = make_ext4fs_bisize(dev, 0, mountpoint, sehandle,
+                result = make_ext4fs_bisize(dev, partition_len, mountpoint, sehandle,
                     block_size, bytes_per_inode);
 
             if (result != 0) {
