@@ -50,6 +50,9 @@ static int format_ext4(char *fs_blkdev, char *fs_mnt_point)
     /* Format the partition using the calculated length */
     reset_ext4fs_info();
     info.len = ((off64_t)nr_sec * 512);
+    if (!strcmp(fs_mnt_point, "/data")) {
+        info.len -= 1*1024*1024;//if data partition leave 1*M for  crypt footer
+    }
 
     /* Use make_ext4fs_internal to avoid wiping an already-wiped partition. */
     rc = make_ext4fs_internal(fd, NULL, NULL, fs_mnt_point, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, NULL);
