@@ -312,7 +312,7 @@ static int load_verity_table(struct dm_ioctl *io, char *name, uint64_t device_si
     tgt->status = 0;
     tgt->sector_start = 0;
     tgt->length = device_size / 512;
-    strcpy(tgt->target_type, "verity");
+    strcpy(tgt->target_type, "android-verity");
 
     // build the verity params
     verity_params = buffer + sizeof(struct dm_ioctl) + sizeof(struct dm_target_spec);
