@@ -1200,7 +1200,8 @@ int main(int argc, char **argv)
         int ret = android_logger_list_read(logger_list, &log_msg);
 
         if (ret == 0) {
-            logcat_panic(false, "read: unexpected EOF!\n");
+            fprintf(stderr, "read: unexpected EOF!\n");
+            continue;
         }
 
         if (ret < 0) {

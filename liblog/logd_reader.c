@@ -621,6 +621,12 @@ static int logdRead(struct android_log_logger_list *logger_list,
     ret = recv(ret, log_msg, LOGGER_ENTRY_MAX_LEN, 0);
     e = errno;
 
+    /* need reconnect */
+    if (ret == 0) {
+        close (transp->context.sock);
+        transp->context.sock = -1;
+    }
+
     if (logger_list->mode & ANDROID_LOG_NONBLOCK) {
         if ((ret == 0) || (e == EINTR)) {
             e = EAGAIN;
