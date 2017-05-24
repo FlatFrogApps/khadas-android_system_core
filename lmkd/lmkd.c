@@ -336,7 +336,7 @@ static void droidlogic_param() {
     // adjust lowmemorykiller config according to ddr size
     if (totalMem > 1024*1024*1024) {//1GB
         pConfig = "/system/etc/lowmemorykiller_2G.txt";
-    } else if (totalMem > 512*1024) {//512MB
+    } else if (totalMem > 512*1024*1024) {//512MB
         pConfig = "/system/etc/lowmemorykiller.txt";
     } else {
         pConfig = "/system/etc/lowmemorykiller_512M.txt";
