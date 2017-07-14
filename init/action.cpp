@@ -123,7 +123,11 @@ void Action::ExecuteCommand(const Command& command) const {
         std::string cmd_str = command.BuildCommandString();
         std::string source = command.BuildSourceString();
 
-        INFO("Command '%s' action=%s%s returned %d took %.2fs\n",
+        if (t.duration() > 0.05)
+            ERROR("oops! '%s' action=%s%s returned %d took %.3fs\n",
+                 cmd_str.c_str(), trigger_name.c_str(), source.c_str(),
+                 result, t.duration());
+        INFO("Command '%s' action=%s%s returned %d took %.3fs\n",
              cmd_str.c_str(), trigger_name.c_str(), source.c_str(),
              result, t.duration());
     }

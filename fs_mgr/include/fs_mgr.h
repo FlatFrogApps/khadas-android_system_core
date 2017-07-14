@@ -44,7 +44,9 @@ enum verity_mode {
 enum mount_mode {
     MOUNT_MODE_DEFAULT = 0,
     MOUNT_MODE_EARLY = 1,
-    MOUNT_MODE_LATE = 2
+    MOUNT_MODE_LATE = 2,
+    MOUNT_MODE_ONLY_SYSTEM = 0x100,
+    MOUNT_MODE_IGNORE_SYSTEM = 0x200
 };
 
 /*

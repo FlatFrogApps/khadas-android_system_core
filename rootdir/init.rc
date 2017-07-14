@@ -70,6 +70,9 @@ on init
     mount tmpfs tmpfs /mnt mode=0755,uid=0,gid=1000
     restorecon_recursive /mnt
 
+    # we start accelboot at boot stage, need to setup context before
+    restorecon_recursive /sys/kernel/debug
+
     mount configfs none /config
     chmod 0775 /config/sdcardfs
     chown system package_info /config/sdcardfs
@@ -161,24 +164,24 @@ on init
     # this ensures that the cpusets are present and usable, but the device's
     # init.rc must actually set the correct cpus
     mkdir /dev/cpuset/foreground
-    write /dev/cpuset/foreground/cpus 0
+    write /dev/cpuset/foreground/cpus 0-3
     write /dev/cpuset/foreground/mems 0
     mkdir /dev/cpuset/foreground/boost
-    write /dev/cpuset/foreground/boost/cpus 0
+    write /dev/cpuset/foreground/boost/cpus 0-3
     write /dev/cpuset/foreground/boost/mems 0
     mkdir /dev/cpuset/background
-    write /dev/cpuset/background/cpus 0
+    write /dev/cpuset/background/cpus 0-3
     write /dev/cpuset/background/mems 0
 
     # system-background is for system tasks that should only run on
     # little cores, not on bigs
     # to be used only by init, so don't change system-bg permissions
     mkdir /dev/cpuset/system-background
-    write /dev/cpuset/system-background/cpus 0
+    write /dev/cpuset/system-background/cpus 0-3
     write /dev/cpuset/system-background/mems 0
 
     mkdir /dev/cpuset/top-app
-    write /dev/cpuset/top-app/cpus 0
+    write /dev/cpuset/top-app/cpus 0-3
     write /dev/cpuset/top-app/mems 0
 
     # change permissions for all cpusets we'll touch at runtime
@@ -249,6 +252,7 @@ on property:sys.boot_from_charger_mode=1
 on load_system_props_action
     load_system_props
 
+
 on load_persist_props_action
     load_persist_props
     start logd
@@ -303,9 +307,6 @@ on post-fs
     mount rootfs rootfs / shared rec
     # Mount default storage into root namespace
     mount none /mnt/runtime/default /storage slave bind rec
-
-    # Make sure /sys/kernel/debug (if present) is labeled properly
-    restorecon_recursive /sys/kernel/debug
 
     # We chown/chmod /cache again so because mount is run as root + defaults
     chown system cache /cache
@@ -497,6 +498,7 @@ on boot
     ifup lo
     hostname localhost
     domainname localdomain
+    write /proc/sys/kernel/sysrq 0
 
     # Memory management.  Basic kernel parameters, and allow the high
     # level system server to be able to adjust the kernel OOM driver

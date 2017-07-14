@@ -607,6 +607,9 @@ static int do_mount_all(const std::vector<std::string>& args) {
     const char* fstabfile = args[1].c_str();
     std::size_t path_arg_end = args.size();
 
+    static bool mount_all_called = false;
+    static bool early_system = false;
+
     for (na = args.size() - 1; na > 1; --na) {
         if (args[na] == "--early") {
              path_arg_end = na;
@@ -616,10 +619,34 @@ static int do_mount_all(const std::vector<std::string>& args) {
             path_arg_end = na;
             import_rc = false;
             mount_mode = MOUNT_MODE_LATE;
+        } else if (args[na] == "--early_system") {
+            if (mount_all_called) {
+                ERROR("already called mount_all!, --early_system must the first! ignore\n");
+                return -1;
+            }
+            if (early_system) {
+                ERROR("already called mount_all!, --early_system must the first! ignore\n");
+                return -1;
+            }
+            path_arg_end = na;
+            early_system = true;
+            mount_mode |= MOUNT_MODE_ONLY_SYSTEM;
+        }  else if (args[na] == "--ignore_system") {
+            if (!early_system) {
+                ERROR("must mount with --early_system! please modify init.*.rc!\n");
+                return -1;
+            }
+            path_arg_end = na;
+            mount_mode |= MOUNT_MODE_IGNORE_SYSTEM;
         }
     }
 
     int ret =  mount_fstab(fstabfile, mount_mode);
+    if (mount_mode & MOUNT_MODE_ONLY_SYSTEM) {
+        INFO("only mount system, return.\n");
+        return ret;
+    }
+    ERROR("here: %d, %d mount_mode:%d\n", import_rc, queue_event, mount_mode);
 
     if (import_rc) {
         /* Paths of .rc files are specified at the 2nd argument and beyond */

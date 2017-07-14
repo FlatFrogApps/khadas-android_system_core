@@ -492,7 +492,9 @@ static int handle_encryptable(const struct fstab_rec* rec)
 int fs_mgr_mount_all(struct fstab *fstab, int mount_mode)
 {
     int i = 0;
-    int encryptable = FS_MGR_MNTALL_DEV_NOT_ENCRYPTABLE;
+    // now we call mount_all twice, this encryptable should use static
+    // to match the behavier of  previous implenment.
+    static int encryptable = FS_MGR_MNTALL_DEV_NOT_ENCRYPTABLE;
     int error_count = 0;
     int mret = -1;
     int mount_errno = 0;
@@ -501,6 +503,9 @@ int fs_mgr_mount_all(struct fstab *fstab, int mount_mode)
     if (!fstab) {
         return -1;
     }
+    int system_mode = mount_mode & 0xFF00;
+    mount_mode = mount_mode & 0xFF;
+
 
     for (i = 0; i < fstab->num_entries; i++) {
         /* Don't mount entries that are managed by vold or not for the mount mode*/
@@ -509,6 +514,21 @@ int fs_mgr_mount_all(struct fstab *fstab, int mount_mode)
              ((mount_mode == MOUNT_MODE_EARLY) && fs_mgr_is_latemount(&fstab->recs[i]))) {
             continue;
         }
+
+        if (system_mode == MOUNT_MODE_ONLY_SYSTEM) {
+            if (strcmp(fstab->recs[i].mount_point, "/system") != 0) {
+                INFO("only system!, ignore mount_point:%s\n", fstab->recs[i].mount_point);
+                continue;
+            }
+        }
+
+        if (system_mode == MOUNT_MODE_IGNORE_SYSTEM) {
+            if (strcmp(fstab->recs[i].mount_point, "/system") == 0) {
+                INFO("ignore system!, ignore mount_point:%s\n", fstab->recs[i].mount_point);
+                continue;
+            }
+        }
+
 
         /* Skip swap and raw partition entries such as boot, recovery, etc */
         if (!strcmp(fstab->recs[i].fs_type, "swap") ||

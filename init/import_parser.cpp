@@ -48,7 +48,7 @@ void ImportParser::EndFile(const std::string& filename) {
     imports_.clear();
     for (const auto& s : current_imports) {
         if (!Parser::GetInstance().ParseConfig(s)) {
-            ERROR("could not import file '%s' from '%s': %s\n",
+            WARNING("could not import file '%s' from '%s': %s\n",
                   s.c_str(), filename.c_str(), strerror(errno));
         }
     }

@@ -95,6 +95,8 @@ struct platform_node {
 static list_declare(sys_perms);
 static list_declare(dev_perms);
 static list_declare(platform_names);
+static bool ignore_tty = false;
+static bool is_virtual = false;
 
 int add_dev_perms(const char *name, const char *attr,
                   mode_t perm, unsigned int uid, unsigned int gid,
@@ -949,6 +951,17 @@ static void do_coldboot(DIR *d)
 
         if(de->d_type != DT_DIR || de->d_name[0] == '.')
             continue;
+        if (ignore_tty && de->d_type == DT_DIR ) {
+            if (!strcmp(de->d_name, "virtual")) {
+                is_virtual = true;
+            }
+
+            if (is_virtual && !strcmp(de->d_name, "tty")) {
+                ignore_tty = false;
+                is_virtual = false;
+                continue;
+            }
+        }
 
         fd = openat(dfd, de->d_name, O_RDONLY | O_DIRECTORY);
         if(fd < 0)
@@ -966,6 +979,8 @@ static void do_coldboot(DIR *d)
 
 static void coldboot(const char *path)
 {
+    NOTICE("coldboot %s\n", path);
+
     DIR *d = opendir(path);
     if(d) {
         do_coldboot(d);
@@ -992,9 +1007,17 @@ void device_init() {
     Timer t;
     coldboot("/sys/class");
     coldboot("/sys/block");
+    coldboot("/sys/devices/virtual/tty/console");
+    coldboot("/sys/devices/virtual/tty/tty");
+    coldboot("/sys/devices/virtual/tty/ptmx");
+    ignore_tty = true;
     coldboot("/sys/devices");
     close(open(COLDBOOT_DONE, O_WRONLY|O_CREAT|O_CLOEXEC, 0000));
     NOTICE("Coldboot took %.2fs.\n", t.duration());
+    Timer t1;
+    ignore_tty = false;
+    coldboot("/sys/devices/virtual/tty");
+    NOTICE("Coldboot tty took %.2fs.\n", t1.duration());
 }
 
 int get_device_fd()
