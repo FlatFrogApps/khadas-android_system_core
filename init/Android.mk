@@ -32,7 +32,7 @@ init_cflags += \
     $(init_options) \
     -Wall -Wextra \
     -Wno-unused-parameter \
-    -Werror \
+    -Werror,-Wunused-function \
     -std=gnu++1z \
 
 # --
@@ -96,6 +96,7 @@ LOCAL_SRC_FILES:= \
 
 LOCAL_MODULE:= init
 LOCAL_C_INCLUDES += \
+    system/extras/ext4_utils/include/ext4_utils \
     system/core/mkbootimg
 
 LOCAL_FORCE_STATIC_EXECUTABLE := true

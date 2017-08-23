@@ -68,6 +68,7 @@
 #include "service.h"
 #include "signal_handler.h"
 #include "util.h"
+#include "make_ext4fs.h"
 
 using namespace std::literals::string_literals;
 
@@ -651,6 +652,98 @@ static int do_write(const std::vector<std::string>& args) {
     return write_file(args[1], args[2]) ? 0 : 1;
 }
 
+int do_confirm_formated(const std::vector<std::string>& args) {
+    int flags = MS_NOATIME | MS_NODIRATIME | MS_NOSUID | MS_NODEV;
+    char options[] = "noauto_da_alloc";
+
+    char dev[128];
+    char mountpoint[128];
+    unsigned block_size, bytes_per_inode;
+
+    LOG(ERROR) << "enter do_confirm_formated " << args[2].c_str() << " "<<args[3].c_str();
+
+    if (args.size() != 4 && args.size() != 6) {
+        LOG(ERROR) << "do_confirm_formated nargs is not valid, nargs:" << (int)args.size();
+        return -1;
+    }
+
+    strncpy(dev, args[2].c_str(), sizeof(dev));
+    strncpy(mountpoint, args[3].c_str(), sizeof(mountpoint));
+
+    if (args.size() == 6) {
+        LOG(ERROR) << "blocksize %s, bytes_per_inode "<<args[4].c_str() <<" "<<args[5].c_str();
+        block_size = (unsigned) atoi(args[4].c_str());
+        if ((block_size % 1024 != 0) || block_size > 8192)
+            block_size = 4096;
+        bytes_per_inode = (unsigned) atoi(args[5].c_str());
+        if (bytes_per_inode < block_size)
+            bytes_per_inode = block_size;
+    }
+
+    if (!strncmp(args[1].c_str(), "ext4", 4)) {
+        LOG(ERROR) << "do_confirm_formated ext4 try mount ";
+        int result = mount(dev, mountpoint, "ext4", flags, options);
+        if ( result != 0 ) {
+            LOG(ERROR) << "do_confirm_formated mount fail,maybe firstboot, need format, try format now, dev: " << dev << " , mountpoint:"<<mountpoint;
+            int fd = -1;
+            int offset = 0;
+            unsigned int nr_sec;
+
+            if (!strcmp(mountpoint, "/data")) {
+                offset = 1*1024*1024;//if data partition leave 1*M for  crypt footer
+            }
+
+            if ((fd = open(dev, O_WRONLY, 0644)) < 0) {
+                LOG(ERROR) << "Cannot open block device:"<<strerror(errno);
+                return -1;
+            }
+
+            if ((ioctl(fd, BLKGETSIZE, &nr_sec)) == -1) {
+                LOG(ERROR) << "Cannot get block device size:"<<strerror(errno);
+                close(fd);
+                return -1;
+            }
+            close(fd);
+
+            long long partition_len = ((off64_t)nr_sec * 512);
+            partition_len -= offset;//if data partition leave 1*M for  crypt footer
+
+            if (args.size() == 4)
+                result = make_ext4fs(dev, partition_len, mountpoint, sehandle);
+            else
+                result = make_ext4fs_bisize(dev, partition_len, mountpoint, sehandle,
+                    block_size, bytes_per_inode);
+
+            if (result != 0) {
+                LOG(ERROR) << "do_confirm_formated mount make_extf4fs fail on: " << dev << " , err:"<<strerror(errno);
+                return -1;
+            }
+
+            fd = open(dev, O_RDWR);
+            if (fd > 0) {
+                fsync(fd);
+                close(fd);//sync to fs
+            }
+
+            //just try
+            result = mount(dev, mountpoint, "ext4", flags, options);
+            if ( result != 0 ) {
+                LOG(ERROR) << "do_confirm_formated re-mount failed on: " << dev << " , mountpoint:"<<mountpoint<<", err:"<<strerror(errno);
+                return -1;
+            }
+        }
+
+        if ( result == 0 ) {
+            result = umount(mountpoint);
+            if (result != 0) {
+                LOG(ERROR) << "do_confirm_formated, umount fail!";
+            }
+        }
+    }
+
+    return 0;
+}
+
 static int do_copy(const std::vector<std::string>& args) {
     std::string data;
     if (read_file(args[1], &data)) {
@@ -890,6 +983,7 @@ BuiltinFunctionMap::Map& BuiltinFunctionMap::map() const {
         {"wait",                    {1,     2,    do_wait}},
         {"wait_for_prop",           {2,     2,    do_wait_for_prop}},
         {"write",                   {2,     2,    do_write}},
+        {"confirm_formated",        {3,     5,    do_confirm_formated}},
     };
     // clang-format on
     return builtin_functions;
