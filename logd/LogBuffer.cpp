@@ -968,16 +968,17 @@ uint64_t LogBuffer::flushTo(
             }
         }
 
-        pthread_mutex_unlock(&mLogElementsLock);
+        //pthread_mutex_unlock(&mLogElementsLock);
 
         // range locking in LastLogTimes looks after us
         max = element->flushTo(reader, this, privileged);
 
         if (max == element->FLUSH_ERROR) {
+            pthread_mutex_unlock(&mLogElementsLock);
             return max;
         }
 
-        pthread_mutex_lock(&mLogElementsLock);
+        //pthread_mutex_lock(&mLogElementsLock);
     }
     pthread_mutex_unlock(&mLogElementsLock);
 
