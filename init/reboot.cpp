@@ -385,7 +385,7 @@ void DoReboot(unsigned int cmd, const std::string& reason, const std::string& re
             // Wait a bit before recounting the number or running services.
             std::this_thread::sleep_for(50ms);
         }
-        LOG(INFO) << "Terminating running services took " << t
+        LOG(ERROR) << "Terminating running services took " << t
                   << " with remaining services:" << service_count;
     }
 
@@ -465,6 +465,20 @@ bool HandlePowerctlMessage(const std::string& command) {
         return false;
     }
 
-    DoReboot(cmd, command, reboot_target, run_fsck);
+    //DoReboot(cmd, command, reboot_target, run_fsck);
+    startRebootThread(new RebootParam(cmd, command, reboot_target, run_fsck));
     return true;
+}
+
+void* rebootLoop(void* data) {
+    RebootParam *param = static_cast<RebootParam *>(data);
+    DoReboot(param->cmd, param->command, param->reboot_target, param->run_fsck);
+}
+
+void startRebootThread(RebootParam *param) {
+    pthread_t id;
+    int ret = pthread_create(&id, NULL, rebootLoop, param);
+    if (ret != 0) {
+        LOG(ERROR) << "create reboot thread error";
+    }
 }
