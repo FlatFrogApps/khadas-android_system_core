@@ -17,6 +17,19 @@
 #ifndef _INIT_REBOOT_H
 #define _INIT_REBOOT_H
 
+class RebootParam {
+  public:
+    RebootParam(unsigned int cmd, const std::string& command, std::string reboot_target, bool run_fsck)
+        : cmd(cmd),
+          command(command),
+          reboot_target(reboot_target),
+          run_fsck(run_fsck) {}
+    unsigned int cmd;
+    const std::string command;
+    std::string reboot_target;
+    bool run_fsck;
+};
+
 /* Reboot / shutdown the system.
  * cmd ANDROID_RB_* as defined in android_reboot.h
  * reason Reason string like "reboot", "userrequested"
@@ -29,5 +42,6 @@ void DoReboot(unsigned int cmd, const std::string& reason, const std::string& re
 
 // Parses and handles a setprop sys.powerctl message.
 bool HandlePowerctlMessage(const std::string& command);
+void startRebootThread(RebootParam *param);
 
 #endif
