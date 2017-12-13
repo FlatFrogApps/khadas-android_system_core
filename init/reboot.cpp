@@ -50,6 +50,7 @@
 #include "reboot.h"
 #include "service.h"
 #include "util.h"
+#include "init.h"
 
 using android::base::StringPrintf;
 
@@ -308,7 +309,7 @@ static void __attribute__((noreturn)) DoThermalOff() {
 void DoReboot(unsigned int cmd, const std::string& reason, const std::string& rebootTarget,
               bool runFsck) {
     Timer t;
-    LOG(INFO) << "Reboot start, reason: " << reason << ", rebootTarget: " << rebootTarget;
+    LOG(WARNING) << "Reboot start cmd:" << cmd << ", reason: " << reason << ", rebootTarget: " << rebootTarget;
 
     android::base::WriteStringToFile(StringPrintf("%s\n", reason.c_str()), LAST_REBOOT_REASON_FILE,
                                      S_IRUSR | S_IWUSR, AID_SYSTEM, AID_SYSTEM);
@@ -385,7 +386,7 @@ void DoReboot(unsigned int cmd, const std::string& reason, const std::string& re
             // Wait a bit before recounting the number or running services.
             std::this_thread::sleep_for(50ms);
         }
-        LOG(ERROR) << "Terminating running services took " << t
+        LOG(WARNING) << "Terminating running services took " << t
                   << " with remaining services:" << service_count;
     }
 
@@ -466,6 +467,8 @@ bool HandlePowerctlMessage(const std::string& command) {
     }
 
     //DoReboot(cmd, command, reboot_target, run_fsck);
+    //waiting this don't exist property, in order to let init main thread can process property only
+    start_waiting_for_property("sys.powerctl", "waiting");
     startRebootThread(new RebootParam(cmd, command, reboot_target, run_fsck));
     return true;
 }
