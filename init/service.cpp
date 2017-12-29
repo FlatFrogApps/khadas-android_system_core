@@ -78,9 +78,11 @@ static std::string ComputeContextFromExecutable(std::string& service_name,
         computed_context = new_con;
         free(new_con);
     }
-    if (rc == 0 && computed_context == mycon.get()) {
-        LOG(ERROR) << "service " << service_name << " does not have a SELinux domain defined";
-        return "";
+    if (strcmp(service_path.c_str(),"/system/bin/app_process64") != 0) {
+         if (rc == 0 && computed_context == mycon.get()) {
+            LOG(ERROR) << "service " << service_name << " does not have a SELinux domain defined";
+            return "";
+         }
     }
     if (rc < 0) {
         LOG(ERROR) << "could not get context while starting '" << service_name << "'";
