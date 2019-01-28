@@ -863,7 +863,7 @@ void ServiceParser::EndSection() {
 }
 
 bool ServiceParser::IsValidName(const std::string& name) const {
-    if (name.size() > 16) {
+    if (name.size() > 64) {
         return false;
     }
     for (const auto& c : name) {
