@@ -508,6 +508,19 @@ static void export_kernel_boot_props() {
         }
     }
 
+    proc_read("/proc/cmdline", cmdline, sizeof(cmdline));
+    if (strstr(cmdline, "board.type=2")) {
+        //KHADAS_EDGEV;
+        property_set("sys.board.type", "2");
+    }
+    else if (strstr(cmdline, "board.type=3")) {
+        //KHADAS_CAPTAIN;
+        property_set("sys.board.type", "3");
+    } else {
+        //KHADAS_EDGE;
+        property_set("sys.board.type", "1");
+    }
+
     for (size_t i = 0; i < ARRAY_SIZE(prop_map); i++) {
         std::string value = property_get(prop_map[i].src_prop);
         property_set(prop_map[i].dst_prop, (!value.empty()) ? value.c_str() : prop_map[i].default_value);
