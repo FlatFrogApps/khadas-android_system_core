@@ -56,6 +56,7 @@ static struct flag_list mount_flags[] = {
     { "slave",      MS_SLAVE },
     { "shared",     MS_SHARED },
     { "defaults",   0 },
+    { "dirsync",    MS_DIRSYNC},
     { 0,            0 },
 };
 
