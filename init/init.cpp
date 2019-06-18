@@ -130,6 +130,23 @@ static void LoadBootScripts(ActionManager& action_manager, ServiceList& service_
         parser.ParseConfig(bootscript);
     }
 }
+ 
+static int unix_read(int  fd, void*  buff, int  len) {
+    int  ret;
+    do { ret = read(fd, buff, len); } while (ret < 0 && errno == EINTR);
+        return ret;
+}
+
+static int proc_read(const char*  filename, char* buff, size_t  buffsize) {
+    int  len = 0;
+    int  fd  = open(filename, O_RDONLY);
+    if (fd >= 0) {
+        len = unix_read(fd, buff, buffsize-1);
+        close(fd);
+    }
+    buff[len > 0 ? len : 0] = 0;
+    return len;
+}
 
 void register_epoll_handler(int fd, void (*fn)()) {
     epoll_event ev;
@@ -373,6 +390,7 @@ static void export_oem_lock_status() {
 }
 
 static void export_kernel_boot_props() {
+    char cmdline[1024];
     struct {
         const char *src_prop;
         const char *dst_prop;
@@ -385,6 +403,18 @@ static void export_kernel_boot_props() {
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
         { "ro.boot.revision",   "ro.revision",   "0", },
     };
+    proc_read("/proc/cmdline", cmdline, sizeof(cmdline));
+    if (strstr(cmdline, "board.type=2")) {
+        //KHADAS_EDGEV;
+        property_set("sys.board.type", "2");
+    }
+    else if (strstr(cmdline, "board.type=3")) {
+        //KHADAS_CAPTAIN;
+        property_set("sys.board.type", "3");
+    } else {
+        //KHADAS_EDGE;
+        property_set("sys.board.type", "1");
+    }
     for (size_t i = 0; i < arraysize(prop_map); i++) {
         std::string value = GetProperty(prop_map[i].src_prop, "");
         property_set(prop_map[i].dst_prop, (!value.empty()) ? value : prop_map[i].default_value);
