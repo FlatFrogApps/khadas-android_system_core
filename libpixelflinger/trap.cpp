@@ -2,28 +2,30 @@
 **
 ** Copyright 2006, The Android Open Source Project
 **
-** Licensed under the Apache License, Version 2.0 (the "License"); 
-** you may not use this file except in compliance with the License. 
-** You may obtain a copy of the License at 
+** Licensed under the Apache License, Version 2.0 (the "License");
+** you may not use this file except in compliance with the License.
+** You may obtain a copy of the License at
 **
-**     http://www.apache.org/licenses/LICENSE-2.0 
+**     http://www.apache.org/licenses/LICENSE-2.0
 **
-** Unless required by applicable law or agreed to in writing, software 
-** distributed under the License is distributed on an "AS IS" BASIS, 
-** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. 
-** See the License for the specific language governing permissions and 
+** Unless required by applicable law or agreed to in writing, software
+** distributed under the License is distributed on an "AS IS" BASIS,
+** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+** See the License for the specific language governing permissions and
 ** limitations under the License.
 */
+
+#define LOG_TAG "pixelflinger-trap"
 
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <cutils/memory.h>
+#include <log/log.h>
+
 #include "trap.h"
 #include "picker.h"
-
-#include <cutils/log.h>
-#include <cutils/memory.h>
 
 namespace android {
 
@@ -94,15 +96,15 @@ static inline void swap(T& a, T& b) {
 static void
 triangle_dump_points( const GGLcoord*  v0,
                       const GGLcoord*  v1,
-				 	  const GGLcoord*  v2 )
+                      const GGLcoord*  v2 )
 {
     float tri = 1.0f / TRI_ONE;
-  LOGD(     "  P0=(%.3f, %.3f)  [%08x, %08x]\n"
-            "  P1=(%.3f, %.3f)  [%08x, %08x]\n"
-            "  P2=(%.3f, %.3f)  [%08x, %08x]\n",
-		v0[0]*tri, v0[1]*tri, v0[0], v0[1],
-		v1[0]*tri, v1[1]*tri, v1[0], v1[1],
-		v2[0]*tri, v2[1]*tri, v2[0], v2[1] );
+    ALOGD("  P0=(%.3f, %.3f)  [%08x, %08x]\n"
+          "  P1=(%.3f, %.3f)  [%08x, %08x]\n"
+          "  P2=(%.3f, %.3f)  [%08x, %08x]\n",
+          v0[0]*tri, v0[1]*tri, v0[0], v0[1],
+          v1[0]*tri, v1[1]*tri, v1[0], v1[1],
+          v2[0]*tri, v2[1]*tri, v2[0], v2[1] );
 }
 
 // ----------------------------------------------------------------------------
@@ -347,7 +349,6 @@ void linex_validate(void *con, const GGLcoord* v0, const GGLcoord* v1, GGLcoord 
 
 static void linex(void *con, const GGLcoord* v0, const GGLcoord* v1, GGLcoord width)
 {
-    GGL_CONTEXT(c, con);
     GGLcoord v[4][2];
     v[0][0] = v0[0];    v[0][1] = v0[1];
     v[1][0] = v1[0];    v[1][1] = v1[1];
@@ -375,7 +376,6 @@ static void linex(void *con, const GGLcoord* v0, const GGLcoord* v1, GGLcoord wi
 
 static void aa_linex(void *con, const GGLcoord* v0, const GGLcoord* v1, GGLcoord width)
 {
-    GGL_CONTEXT(c, con);
     GGLcoord v[4][2];
     v[0][0] = v0[0];    v[0][1] = v0[1];
     v[1][0] = v1[0];    v[1][1] = v1[1];
@@ -563,10 +563,10 @@ void trianglex_small(void* con,
     
     c->init_y(c, miny);
     for (int32_t y = miny; y < maxy; y++) {
-        register int32_t ex0 = ey0;
-        register int32_t ex1 = ey1;
-        register int32_t ex2 = ey2;    
-        register int32_t xl, xr;
+        int32_t ex0 = ey0;
+        int32_t ex1 = ey1;
+        int32_t ex2 = ey2;    
+        int32_t xl, xr;
         for (xl=minx ; xl<maxx ; xl++) {
             if (ex0>0 && ex1>0 && ex2>0)
                 break; // all strictly positive
@@ -639,7 +639,7 @@ struct Edge
 static void
 edge_dump( Edge*  edge )
 {
-  LOGI( "  top=%d (%.3f)  bot=%d (%.3f)  x=%d (%.3f)  ix=%d (%.3f)",
+  ALOGI( "  top=%d (%.3f)  bot=%d (%.3f)  x=%d (%.3f)  ix=%d (%.3f)",
         edge->y_top, edge->y_top/float(TRI_ONE),
 		edge->y_bot, edge->y_bot/float(TRI_ONE),
 		edge->x, edge->x/float(FIXED_ONE),
@@ -650,7 +650,7 @@ static void
 triangle_dump_edges( Edge*  edges,
                      int            count )
 { 
-    LOGI( "%d edge%s:\n", count, count == 1 ? "" : "s" );
+    ALOGI( "%d edge%s:\n", count, count == 1 ? "" : "s" );
 	for ( ; count > 0; count--, edges++ )
 	  edge_dump( edges );
 }
@@ -835,7 +835,7 @@ void AAEdge::dump()
     float tri  = 1.0f / TRI_ONE;
     float iter = 1.0f / (1<<TRI_ITERATORS_BITS);
     float fix  = 1.0f / FIXED_ONE;
-    LOGD(   "x=%08x (%.3f), "
+    ALOGD(   "x=%08x (%.3f), "
             "x_incr=%08x (%.3f), y_incr=%08x (%.3f), "
             "y_top=%08x (%.3f), y_bot=%08x (%.3f) ",
         x, x*fix,

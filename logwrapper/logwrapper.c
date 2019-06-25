@@ -14,113 +14,84 @@
  * limitations under the License.
  */
 
-#include <string.h>
-#include <sys/types.h>
-#include <sys/wait.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/wait.h>
 #include <unistd.h>
-#include <errno.h>
 
-#include "cutils/log.h"
+#include <cutils/klog.h>
+#include <log/log.h>
+#include <logwrap/logwrap.h>
 
 void fatal(const char *msg) {
-    fprintf(stderr, msg);
-    LOG(LOG_ERROR, "logwrapper", msg);
+    fprintf(stderr, "%s", msg);
+    ALOG(LOG_ERROR, "logwrapper", "%s", msg);
     exit(-1);
 }
 
 void usage() {
     fatal(
-        "Usage: logwrapper BINARY [ARGS ...]\n"
+        "Usage: logwrapper [-a] [-d] [-k] BINARY [ARGS ...]\n"
         "\n"
         "Forks and executes BINARY ARGS, redirecting stdout and stderr to\n"
         "the Android logging system. Tag is set to BINARY, priority is\n"
-        "always LOG_INFO.\n");
-}
-
-void parent(const char *tag, int parent_read) {
-    int status;
-    char buffer[1024];
-
-    int a = 0;  // start index of unprocessed data
-    int b = 0;  // end index of unprocessed data
-    int sz;
-    while ((sz = read(parent_read, &buffer[b], 1023 - b)) > 0) {
-        // Log one line at a time
-        for (b = a; b < sz; b++) {
-            if (buffer[b] == '\n') {
-                buffer[b] = '\0';
-                LOG(LOG_INFO, tag, &buffer[a]);
-                a = b + 1;
-            }
-        }
-
-        if (a == 0 && b == 1023) {
-            // buffer is full, flush
-            buffer[b] = '\0';
-            LOG(LOG_INFO, tag, &buffer[a]);
-            b = 0;
-        } else {
-            // Keep left-overs
-            b = sz - a;
-            memmove(buffer, &buffer[a], b);
-            a = 0;
-        }
-    }
-    // Flush remaining data
-    if (a != b) {
-        buffer[b] = '\0';
-        LOG(LOG_INFO, tag, &buffer[a]);
-    }
-    wait(&status);  // Wait for child
-}
-
-void child(int argc, char* argv[]) {
-    // create null terminated argv_child array
-    char* argv_child[argc + 1];
-    memcpy(argv_child, argv, argc * sizeof(char *));
-    argv_child[argc] = NULL;
-
-    if (execvp(argv_child[0], argv_child)) {
-        LOG(LOG_ERROR, "logwrapper",
-            "executing %s failed: %s\n", argv_child[0], strerror(errno));
-        exit(-1);
-    }
+        "always LOG_INFO.\n"
+        "\n"
+        "-a: Causes logwrapper to do abbreviated logging.\n"
+        "    This logs up to the first 4K and last 4K of the command\n"
+        "    being run, and logs the output when the command exits\n"
+        "-d: Causes logwrapper to SIGSEGV when BINARY terminates\n"
+        "    fault address is set to the status of wait()\n"
+        "-k: Causes logwrapper to log to the kernel log instead of\n"
+        "    the Android system log\n");
 }
 
 int main(int argc, char* argv[]) {
-    pid_t pid;
+    int seg_fault_on_exit = 0;
+    int log_target = LOG_ALOG;
+    bool abbreviated = false;
+    int ch;
+    int status = 0xAAAA;
+    int rc;
 
-    int pipe_fds[2];
-    int *parent_read = &pipe_fds[0];
-    int *child_write = &pipe_fds[1];
+    while ((ch = getopt(argc, argv, "adk")) != -1) {
+        switch (ch) {
+            case 'a':
+                abbreviated = true;
+                break;
+            case 'd':
+                seg_fault_on_exit = 1;
+                break;
+            case 'k':
+                log_target = LOG_KLOG;
+                klog_set_level(6);
+                break;
+            case '?':
+            default:
+              usage();
+        }
+    }
+    argc -= optind;
+    argv += optind;
 
-    if (argc < 2) {
+    if (argc < 1) {
         usage();
     }
 
-    if (pipe(pipe_fds) < 0) {
-        fatal("Cannot create pipe\n");
+    rc = android_fork_execvp_ext(argc, &argv[0], &status, true,
+                                 log_target, abbreviated, NULL, NULL, 0);
+    if (!rc) {
+        if (WIFEXITED(status))
+            rc = WEXITSTATUS(status);
+        else
+            rc = -ECHILD;
     }
 
-    pid = fork();
-    if (pid < 0) {
-        fatal("Failed to fork\n");
-    } else if (pid == 0) {
-        // redirect stdout and stderr
-        close(*parent_read);
-        dup2(*child_write, 1);
-        dup2(*child_write, 2);
-        close(*child_write);
-
-        child(argc - 1, &argv[1]);
-
-    } else {
-        close(*child_write);
-
-        parent(argv[1], *parent_read);
+    if (seg_fault_on_exit) {
+        uintptr_t fault_address = (uintptr_t) status;
+        *(int *) fault_address = 0;  // causes SIGSEGV with fault_address = status
     }
 
-    return 0;
+    return rc;
 }

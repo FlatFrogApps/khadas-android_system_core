@@ -21,13 +21,13 @@
 namespace android {
 
 static GGLFormat const gPixelFormatInfos[] =
-{
+{   //          Alpha    Red     Green   Blue
     {  0,  0, {{ 0, 0,   0, 0,   0, 0,   0, 0 }},        0 },   // PIXEL_FORMAT_NONE
     {  4, 32, {{32,24,   8, 0,  16, 8,  24,16 }}, GGL_RGBA },   // PIXEL_FORMAT_RGBA_8888
     {  4, 24, {{ 0, 0,   8, 0,  16, 8,  24,16 }}, GGL_RGB  },   // PIXEL_FORMAT_RGBX_8888
     {  3, 24, {{ 0, 0,   8, 0,  16, 8,  24,16 }}, GGL_RGB  },   // PIXEL_FORMAT_RGB_888
     {  2, 16, {{ 0, 0,  16,11,  11, 5,   5, 0 }}, GGL_RGB  },   // PIXEL_FORMAT_RGB_565
-    {  0,  0, {{ 0, 0,   0, 0,   0, 0,   0, 0 }},        0 },   // PIXEL_FORMAT_NONE
+    {  4, 32, {{32,24,  24,16,  16, 8,   8, 0 }}, GGL_RGBA },   // PIXEL_FORMAT_BGRA_8888
     {  2, 16, {{ 1, 0,  16,11,  11, 6,   6, 1 }}, GGL_RGBA },   // PIXEL_FORMAT_RGBA_5551
     {  2, 16, {{ 4, 0,  16,12,  12, 8,   8, 4 }}, GGL_RGBA },   // PIXEL_FORMAT_RGBA_4444
     {  1,  8, {{ 8, 0,   0, 0,   0, 0,   0, 0 }}, GGL_ALPHA},   // PIXEL_FORMAT_A8
@@ -40,8 +40,8 @@ static GGLFormat const gPixelFormatInfos[] =
     {  0,  0, {{ 0, 0,   0, 0,   0, 0,   0, 0 }},        0 },   // PIXEL_FORMAT_NONE
     {  0,  0, {{ 0, 0,   0, 0,   0, 0,   0, 0 }},        0 },   // PIXEL_FORMAT_NONE
 
-    {  1, 16, {{ 0, 8,   0, 8,   0, 8,   0, 0 }}, GGL_Y_CB_CR },// PIXEL_FORMAT_YCbCr_422_SP
-    {  1, 12, {{ 0, 8,   0, 8,   0, 8,   0, 0 }}, GGL_Y_CB_CR },// PIXEL_FORMAT_YCbCr_420_SP
+    {  0,  0, {{ 0, 0,   0, 0,   0, 0,   0, 0 }},        0 },   // PIXEL_FORMAT_NONE
+    {  0,  0, {{ 0, 0,   0, 0,   0, 0,   0, 0 }},        0 },   // PIXEL_FORMAT_NONE
     {  0,  0, {{ 0, 0,   0, 0,   0, 0,   0, 0 }},        0 },   // PIXEL_FORMAT_NONE
     {  0,  0, {{ 0, 0,   0, 0,   0, 0,   0, 0 }},        0 },   // PIXEL_FORMAT_NONE
     {  0,  0, {{ 0, 0,   0, 0,   0, 0,   0, 0 }},        0 },   // PIXEL_FORMAT_NONE
@@ -53,6 +53,15 @@ static GGLFormat const gPixelFormatInfos[] =
     {  1,  8, {{  8, 0,  0, 0,   0, 0,   0, 0 }}, GGL_STENCIL_INDEX  },
     {  4, 24, {{  0, 0, 24, 0,   0, 0,   0, 0 }}, GGL_DEPTH_COMPONENT},
     {  4,  8, {{ 32,24,  0, 0,   0, 0,   0, 0 }}, GGL_STENCIL_INDEX  },
+
+    {  0,  0, {{ 0, 0,   0, 0,   0, 0,   0, 0 }},        0 },   // PIXEL_FORMAT_NONE
+    {  0,  0, {{ 0, 0,   0, 0,   0, 0,   0, 0 }},        0 },   // PIXEL_FORMAT_NONE
+    {  0,  0, {{ 0, 0,   0, 0,   0, 0,   0, 0 }},        0 },   // PIXEL_FORMAT_NONE
+    {  0,  0, {{ 0, 0,   0, 0,   0, 0,   0, 0 }},        0 },   // PIXEL_FORMAT_NONE
+
+    {  0,  0, {{ 0, 0,   0, 0,   0, 0,   0, 0 }},        0 },   // PIXEL_FORMAT_NONE
+    {  0,  0, {{ 0, 0,   0, 0,   0, 0,   0, 0 }},        0 },   // PIXEL_FORMAT_NONE
+
 };
 
 }; // namespace android

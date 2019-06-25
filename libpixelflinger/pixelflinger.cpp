@@ -281,6 +281,7 @@ static void ggl_fogColor3xv(void* con, const GGLclampx* color)
     const int32_t r = gglClampx(color[0]);
     const int32_t g = gglClampx(color[1]);
     const int32_t b = gglClampx(color[2]);
+    c->state.fog.color[GGLFormat::ALPHA]= 0xFF; // unused
 	c->state.fog.color[GGLFormat::RED]  = (r - (r>>8))>>8;
 	c->state.fog.color[GGLFormat::GREEN]= (g - (g>>8))>>8;
 	c->state.fog.color[GGLFormat::BLUE] = (b - (b>>8))>>8;
@@ -661,7 +662,7 @@ void ggl_enable_dither(context_t* c, int enable)
     }
 }
 
-void ggl_enable_stencil_test(context_t* c, int enable)
+void ggl_enable_stencil_test(context_t* /*c*/, int /*enable*/)
 {
 }
 
@@ -726,18 +727,10 @@ void ggl_enable_texture2d(context_t* c, int enable)
 
 int64_t ggl_system_time()
 {
-#if defined(HAVE_POSIX_CLOCKS)
     struct timespec t;
     t.tv_sec = t.tv_nsec = 0;
     clock_gettime(CLOCK_THREAD_CPUTIME_ID, &t);
     return int64_t(t.tv_sec)*1000000000LL + t.tv_nsec;
-#else
-    // we don't support the clocks here.
-    struct timeval t;
-    t.tv_sec = t.tv_usec = 0;
-    gettimeofday(&t, NULL);
-    return int64_t(t.tv_sec)*1000000000LL + int64_t(t.tv_usec)*1000LL;
-#endif
 }
 
 // ----------------------------------------------------------------------------

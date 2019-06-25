@@ -2,16 +2,16 @@
 **
 ** Copyright 2006, The Android Open Source Project
 **
-** Licensed under the Apache License, Version 2.0 (the "License"); 
-** you may not use this file except in compliance with the License. 
-** You may obtain a copy of the License at 
+** Licensed under the Apache License, Version 2.0 (the "License");
+** you may not use this file except in compliance with the License.
+** You may obtain a copy of the License at
 **
-**     http://www.apache.org/licenses/LICENSE-2.0 
+**     http://www.apache.org/licenses/LICENSE-2.0
 **
-** Unless required by applicable law or agreed to in writing, software 
-** distributed under the License is distributed on an "AS IS" BASIS, 
-** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. 
-** See the License for the specific language governing permissions and 
+** Unless required by applicable law or agreed to in writing, software
+** distributed under the License is distributed on an "AS IS" BASIS,
+** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+** See the License for the specific language governing permissions and
 ** limitations under the License.
 */
 
@@ -19,19 +19,21 @@
 
 #include <assert.h>
 #include <stdint.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/types.h>
-#include <cutils/log.h>
 
-#include "codeflinger/GGLAssembler.h"
+#include <log/log.h>
+
+#include "GGLAssembler.h"
 
 namespace android {
 
 // ----------------------------------------------------------------------------
 
 GGLAssembler::GGLAssembler(ARMAssemblerInterface* target)
-    : ARMAssemblerProxy(target), RegisterAllocator(), mOptLevel(7)
+    : ARMAssemblerProxy(target),
+      RegisterAllocator(ARMAssemblerProxy::getCodegenArch()), mOptLevel(7)
 {
 }
 
@@ -82,7 +84,7 @@ int GGLAssembler::scanline(const needs_t& needs, context_t const* c)
             needs.p, needs.n, needs.t[0], needs.t[1], per_fragment_ops);
 
     if (err) {
-        LOGE("Error while generating ""%s""\n", name);
+        ALOGE("Error while generating ""%s""\n", name);
         disassemble(name);
         return -1;
     }
@@ -92,8 +94,6 @@ int GGLAssembler::scanline(const needs_t& needs, context_t const* c)
 
 int GGLAssembler::scanline_core(const needs_t& needs, context_t const* c)
 {
-    int64_t duration = ggl_system_time();
-
     mBlendFactorCached = 0;
     mBlending = 0;
     mMasking = 0;
@@ -151,6 +151,7 @@ int GGLAssembler::scanline_core(const needs_t& needs, context_t const* c)
         // Destination is zero (beware of logic ops)
     }
     
+    int fbComponents = 0;
     const int masking = GGL_READ_NEEDS(MASK_ARGB, needs.n);
     for (int i=0 ; i<4 ; i++) {
         const int mask = 1<<i;
@@ -176,9 +177,14 @@ int GGLAssembler::scanline_core(const needs_t& needs, context_t const* c)
 
         mBlending |= (info.blend ? mask : 0);
         mMasking |= (mCbFormat.c[i].h && info.masked) ? mask : 0;
+        fbComponents |= mCbFormat.c[i].h ? mask : 0;
     }
 
-
+    mAllMasked = (mMasking == fbComponents);
+    if (mAllMasked) {
+        mDithering = 0;
+    }
+    
     fragment_parts_t parts;
 
     // ------------------------------------------------------------------------
@@ -224,10 +230,14 @@ int GGLAssembler::scanline_core(const needs_t& needs, context_t const* c)
 
             // texel generation
             build_textures(parts, regs);
-        }        
+            if (registerFile().status())
+                return registerFile().status();
+        }
 
-        if ((blending & (FACTOR_DST|BLEND_DST)) || mMasking ||
-                (mLogicOp & LOGIC_OP_DST)) {
+        if ((blending & (FACTOR_DST|BLEND_DST)) || 
+                (mMasking && !mAllMasked) ||
+                (mLogicOp & LOGIC_OP_DST)) 
+        {
             // blending / logic_op / masking need the framebuffer
             mDstPixel.setTo(regs.obtain(), &mCbFormat);
 
@@ -252,7 +262,7 @@ int GGLAssembler::scanline_core(const needs_t& needs, context_t const* c)
                 const int mask = GGL_DITHER_SIZE-1;
                 parts.dither = reg_t(regs.obtain());
                 AND(AL, 0, parts.dither.reg, parts.count.reg, imm(mask));
-                ADD(AL, 0, parts.dither.reg, parts.dither.reg, ctxtReg);
+                ADDR_ADD(AL, 0, parts.dither.reg, ctxtReg, parts.dither.reg);
                 LDRB(AL, parts.dither.reg, parts.dither.reg,
                         immed12_pre(GGL_OFFSETOF(ditherMatrix)));
             }
@@ -284,14 +294,16 @@ int GGLAssembler::scanline_core(const needs_t& needs, context_t const* c)
             pixel = mDstPixel;
         }
         
-        // logic operation
-        build_logic_op(pixel, regs);
-
-        // masking
-        build_masking(pixel, regs); 
-
-        comment("store");
-        store(parts.cbPtr, pixel, WRITE_BACK);
+        if (!mAllMasked) {
+            // logic operation
+            build_logic_op(pixel, regs);
+    
+            // masking
+            build_masking(pixel, regs); 
+    
+            comment("store");
+            store(parts.cbPtr, pixel, WRITE_BACK);
+        }
     }
 
     if (registerFile().status())
@@ -322,7 +334,9 @@ int GGLAssembler::scanline_core(const needs_t& needs, context_t const* c)
         build_smooth_shade(parts);
         build_iterate_z(parts);
         build_iterate_f(parts);
-        ADD(AL, 0, parts.cbPtr.reg, parts.cbPtr.reg, imm(parts.cbPtr.size>>3));
+        if (!mAllMasked) {
+            ADDR_ADD(AL, 0, parts.cbPtr.reg, parts.cbPtr.reg, imm(parts.cbPtr.size>>3));
+        }
         SUB(AL, S, parts.count.reg, parts.count.reg, imm(1<<16));
         B(PL, "fragment_loop");
         epilog(registerFile().touched());
@@ -337,7 +351,6 @@ void GGLAssembler::build_scanline_prolog(
     fragment_parts_t& parts, const needs_t& needs)
 {
     Scratch scratches(registerFile());
-    int Rctx = mBuilderContext.Rctx;
 
     // compute count
     comment("compute ct (# of pixels to process)");
@@ -370,16 +383,18 @@ void GGLAssembler::build_scanline_prolog(
         MOV(AL, 0, parts.count.reg, reg_imm(parts.count.reg, LSL, 16));
     }
 
-    // compute dst ptr
-    comment("compute color-buffer pointer");
-    const int cb_bits = mCbFormat.size*8;
-    int Rs = scratches.obtain();
-    parts.cbPtr.setTo(obtainReg(), cb_bits);
-    CONTEXT_LOAD(Rs, state.buffers.color.stride);
-    CONTEXT_LOAD(parts.cbPtr.reg, state.buffers.color.data);
-    SMLABB(AL, Rs, Ry, Rs, Rx);  // Rs = Rx + Ry*Rs
-    base_offset(parts.cbPtr, parts.cbPtr, Rs);
-    scratches.recycle(Rs);
+    if (!mAllMasked) {
+        // compute dst ptr
+        comment("compute color-buffer pointer");
+        const int cb_bits = mCbFormat.size*8;
+        int Rs = scratches.obtain();
+        parts.cbPtr.setTo(obtainReg(), cb_bits);
+        CONTEXT_LOAD(Rs, state.buffers.color.stride);
+        CONTEXT_ADDR_LOAD(parts.cbPtr.reg, state.buffers.color.data);
+        SMLABB(AL, Rs, Ry, Rs, Rx);  // Rs = Rx + Ry*Rs
+        base_offset(parts.cbPtr, parts.cbPtr, Rs);
+        scratches.recycle(Rs);
+    }
     
     // init fog
     const int need_fog = GGL_READ_NEEDS(P_FOG, needs.p);
@@ -411,11 +426,11 @@ void GGLAssembler::build_scanline_prolog(
         int Rs = dzdx;
         int zbase = scratches.obtain();
         CONTEXT_LOAD(Rs, state.buffers.depth.stride);
-        CONTEXT_LOAD(zbase, state.buffers.depth.data);
+        CONTEXT_ADDR_LOAD(zbase, state.buffers.depth.data);
         SMLABB(AL, Rs, Ry, Rs, Rx);
         ADD(AL, 0, Rs, Rs, reg_imm(parts.count.reg, LSR, 16));
-        ADD(AL, 0, zbase, zbase, reg_imm(Rs, LSL, 1));
-        CONTEXT_STORE(zbase, generated_vars.zbase);
+        ADDR_ADD(AL, 0, zbase, zbase, reg_imm(Rs, LSL, 1));
+        CONTEXT_ADDR_STORE(zbase, generated_vars.zbase);
     }
 
     // init texture coordinates
@@ -428,8 +443,8 @@ void GGLAssembler::build_scanline_prolog(
     // init coverage factor application (anti-aliasing)
     if (mAA) {
         parts.covPtr.setTo(obtainReg(), 16);
-        CONTEXT_LOAD(parts.covPtr.reg, state.buffers.coverage);
-        ADD(AL, 0, parts.covPtr.reg, parts.covPtr.reg, reg_imm(Rx, LSL, 1));
+        CONTEXT_ADDR_LOAD(parts.covPtr.reg, state.buffers.coverage);
+        ADDR_ADD(AL, 0, parts.covPtr.reg, parts.covPtr.reg, reg_imm(Rx, LSL, 1));
     }
 }
 
@@ -677,7 +692,7 @@ void GGLAssembler::build_coverage_application(component_t& fragment,
 // ---------------------------------------------------------------------------
 
 void GGLAssembler::build_alpha_test(component_t& fragment,
-                                    const fragment_parts_t& parts)
+                                    const fragment_parts_t& /*parts*/)
 {
     if (mAlphaTest != GGL_ALWAYS) {
         comment("Alpha Test");
@@ -748,8 +763,8 @@ void GGLAssembler::build_depth_test(
         int depth = scratches.obtain();
         int z = parts.z.reg;
         
-        CONTEXT_LOAD(zbase, generated_vars.zbase);  // stall
-        SUB(AL, 0, zbase, zbase, reg_imm(parts.count.reg, LSR, 15));
+        CONTEXT_ADDR_LOAD(zbase, generated_vars.zbase);  // stall
+        ADDR_SUB(AL, 0, zbase, zbase, reg_imm(parts.count.reg, LSR, 15));
             // above does zbase = zbase + ((count >> 16) << 1)
 
         if (mask & Z_TEST) {
@@ -779,7 +794,7 @@ void GGLAssembler::build_iterate_z(const fragment_parts_t& parts)
     }
 }
 
-void GGLAssembler::build_iterate_f(const fragment_parts_t& parts)
+void GGLAssembler::build_iterate_f(const fragment_parts_t& /*parts*/)
 {
     const needs_t& needs = mBuilderContext.needs;
     if (GGL_READ_NEEDS(P_FOG, needs.p)) {
@@ -876,6 +891,20 @@ void GGLAssembler::build_and_immediate(int d, int s, uint32_t mask, int bits)
         return;
     }
     
+    if ((getCodegenArch() == CODEGEN_ARCH_MIPS) ||
+        (getCodegenArch() == CODEGEN_ARCH_MIPS64)) {
+        // MIPS can do 16-bit imm in 1 instr, 32-bit in 3 instr
+        // the below ' while (mask)' code is buggy on mips
+        // since mips returns true on isValidImmediate()
+        // then we get multiple AND instr (positive logic)
+        AND( AL, 0, d, s, imm(mask) );
+        return;
+    }
+    else if (getCodegenArch() == CODEGEN_ARCH_ARM64) {
+        AND( AL, 0, d, s, imm(mask) );
+        return;
+    }
+
     int negative_logic = !isValidImmediate(mask);
     if (negative_logic) {
         mask = ~mask & size;
@@ -904,8 +933,9 @@ void GGLAssembler::build_and_immediate(int d, int s, uint32_t mask, int bits)
 
 void GGLAssembler::build_masking(pixel_t& pixel, Scratch& regs)
 {
-    if (!mMasking)
+    if (!mMasking || mAllMasked) {
         return;
+    }
 
     comment("color mask");
 
@@ -928,7 +958,7 @@ void GGLAssembler::build_masking(pixel_t& pixel, Scratch& regs)
 
     // There is no need to clear the masked components of the source
     // (unless we applied a logic op), because they're already zeroed 
-    // by contruction (masked components are not computed)
+    // by construction (masked components are not computed)
 
     if (mLogicOp) {
         const needs_t& needs = mBuilderContext.needs;
@@ -963,22 +993,22 @@ void GGLAssembler::base_offset(
 {
     switch (b.size) {
     case 32:
-        ADD(AL, 0, d.reg, b.reg, reg_imm(o.reg, LSL, 2));
+        ADDR_ADD(AL, 0, d.reg, b.reg, reg_imm(o.reg, LSL, 2));
         break;
     case 24:
         if (d.reg == b.reg) {
-            ADD(AL, 0, d.reg, b.reg, reg_imm(o.reg, LSL, 1));
-            ADD(AL, 0, d.reg, d.reg, o.reg);
+            ADDR_ADD(AL, 0, d.reg, b.reg, reg_imm(o.reg, LSL, 1));
+            ADDR_ADD(AL, 0, d.reg, d.reg, o.reg);
         } else {
-            ADD(AL, 0, d.reg, o.reg, reg_imm(o.reg, LSL, 1));
-            ADD(AL, 0, d.reg, d.reg, b.reg);
+            ADDR_ADD(AL, 0, d.reg, o.reg, reg_imm(o.reg, LSL, 1));
+            ADDR_ADD(AL, 0, d.reg, d.reg, b.reg);
         }
         break;
     case 16:
-        ADD(AL, 0, d.reg, b.reg, reg_imm(o.reg, LSL, 1));
+        ADDR_ADD(AL, 0, d.reg, b.reg, reg_imm(o.reg, LSL, 1));
         break;
     case 8:
-        ADD(AL, 0, d.reg, b.reg, o.reg);
+        ADDR_ADD(AL, 0, d.reg, b.reg, o.reg);
         break;
     }
 }
@@ -986,6 +1016,15 @@ void GGLAssembler::base_offset(
 // ----------------------------------------------------------------------------
 // cheezy register allocator...
 // ----------------------------------------------------------------------------
+
+// Modified to support MIPS processors, in a very simple way. We retain the
+// (Arm) limit of 16 total registers, but shift the mapping of those registers
+// from 0-15, to 2-17. Register 0 on Mips cannot be used as GP registers, and
+// register 1 has a traditional use as a temp).
+
+RegisterAllocator::RegisterAllocator(int arch) : mRegs(arch)
+{
+}
 
 void RegisterAllocator::reset()
 {
@@ -1014,16 +1053,24 @@ RegisterAllocator::RegisterFile& RegisterAllocator::registerFile()
 
 // ----------------------------------------------------------------------------
 
-RegisterAllocator::RegisterFile::RegisterFile()
-    : mRegs(0), mTouched(0), mStatus(0)
+RegisterAllocator::RegisterFile::RegisterFile(int codegen_arch)
+    : mRegs(0), mTouched(0), mStatus(0), mArch(codegen_arch), mRegisterOffset(0)
 {
+    if ((mArch == ARMAssemblerInterface::CODEGEN_ARCH_MIPS) ||
+        (mArch == ARMAssemblerInterface::CODEGEN_ARCH_MIPS64)) {
+        mRegisterOffset = 2;    // ARM has regs 0..15, MIPS offset to 2..17
+    }
     reserve(ARMAssemblerInterface::SP);
     reserve(ARMAssemblerInterface::PC);
 }
 
-RegisterAllocator::RegisterFile::RegisterFile(const RegisterFile& rhs)
-    : mRegs(rhs.mRegs), mTouched(rhs.mTouched)
+RegisterAllocator::RegisterFile::RegisterFile(const RegisterFile& rhs, int codegen_arch)
+    : mRegs(rhs.mRegs), mTouched(rhs.mTouched), mArch(codegen_arch), mRegisterOffset(0)
 {
+    if ((mArch == ARMAssemblerInterface::CODEGEN_ARCH_MIPS) ||
+        (mArch == ARMAssemblerInterface::CODEGEN_ARCH_MIPS64)) {
+        mRegisterOffset = 2;    // ARM has regs 0..15, MIPS offset to 2..17
+    }
 }
 
 RegisterAllocator::RegisterFile::~RegisterFile()
@@ -1042,8 +1089,12 @@ void RegisterAllocator::RegisterFile::reset()
     reserve(ARMAssemblerInterface::PC);
 }
 
+// RegisterFile::reserve() take a register parameter in the
+// range 0-15 (Arm compatible), but on a Mips processor, will
+// return the actual allocated register in the range 2-17.
 int RegisterAllocator::RegisterFile::reserve(int reg)
 {
+    reg += mRegisterOffset;
     LOG_ALWAYS_FATAL_IF(isUsed(reg),
                         "reserving register %d, but already in use",
                         reg);
@@ -1052,6 +1103,7 @@ int RegisterAllocator::RegisterFile::reserve(int reg)
     return reg;
 }
 
+// This interface uses regMask in range 2-17 on MIPS, no translation.
 void RegisterAllocator::RegisterFile::reserveSeveral(uint32_t regMask)
 {
     mRegs |= regMask;
@@ -1060,7 +1112,7 @@ void RegisterAllocator::RegisterFile::reserveSeveral(uint32_t regMask)
 
 int RegisterAllocator::RegisterFile::isUsed(int reg) const
 {
-    LOG_ALWAYS_FATAL_IF(reg>=16, "invalid register %d", reg);
+    LOG_ALWAYS_FATAL_IF(reg>=16+(int)mRegisterOffset, "invalid register %d", reg);
     return mRegs & (1<<reg);
 }
 
@@ -1071,34 +1123,36 @@ int RegisterAllocator::RegisterFile::obtain()
                                      6,  7, 8, 9,
                                     10, 11 };
     const int nbreg = sizeof(priorityList);
-    int i, r;
+    int i, r, reg;
     for (i=0 ; i<nbreg ; i++) {
         r = priorityList[i];
-        if (!isUsed(r)) {
+        if (!isUsed(r + mRegisterOffset)) {
             break;
         }
     }
     // this is not an error anymore because, we'll try again with
     // a lower optimization level.
-    //LOGE_IF(i >= nbreg, "pixelflinger ran out of registers\n");
+    //ALOGE_IF(i >= nbreg, "pixelflinger ran out of registers\n");
     if (i >= nbreg) {
         mStatus |= OUT_OF_REGISTERS;
         // we return SP so we can more easily debug things
         // the code will never be run anyway.
         return ARMAssemblerInterface::SP; 
     }
-    reserve(r);
-    return r;
+    reg = reserve(r);  // Param in Arm range 0-15, returns range 2-17 on Mips.
+    return reg;
 }
 
 bool RegisterAllocator::RegisterFile::hasFreeRegs() const
 {
-    return ((mRegs & 0xFFFF) == 0xFFFF) ? false : true;
+    uint32_t regs = mRegs >> mRegisterOffset;   // MIPS fix.
+    return ((regs & 0xFFFF) == 0xFFFF) ? false : true;
 }
 
 int RegisterAllocator::RegisterFile::countFreeRegs() const
 {
-    int f = ~mRegs & 0xFFFF;
+    uint32_t regs = mRegs >> mRegisterOffset;   // MIPS fix.
+    int f = ~regs & 0xFFFF;
     // now count number of 1
    f = (f & 0x5555) + ((f>>1) & 0x5555);
    f = (f & 0x3333) + ((f>>2) & 0x3333);
@@ -1109,18 +1163,24 @@ int RegisterAllocator::RegisterFile::countFreeRegs() const
 
 void RegisterAllocator::RegisterFile::recycle(int reg)
 {
-    LOG_FATAL_IF(!isUsed(reg),
-            "recycling unallocated register %d",
-            reg);
+    // commented out, since common failure of running out of regs
+    // triggers this assertion. Since the code is not execectued
+    // in that case, it does not matter. No reason to FATAL err.
+    // LOG_FATAL_IF(!isUsed(reg),
+    //         "recycling unallocated register %d",
+    //         reg);
     mRegs &= ~(1<<reg);
 }
 
 void RegisterAllocator::RegisterFile::recycleSeveral(uint32_t regMask)
 {
-    LOG_FATAL_IF((mRegs & regMask)!=regMask,
-            "recycling unallocated registers "
-            "(recycle=%08x, allocated=%08x, unallocated=%08x)",
-            regMask, mRegs, mRegs&regMask);
+    // commented out, since common failure of running out of regs
+    // triggers this assertion. Since the code is not execectued
+    // in that case, it does not matter. No reason to FATAL err.
+    // LOG_FATAL_IF((mRegs & regMask)!=regMask,
+    //         "recycling unallocated registers "
+    //         "(recycle=%08x, allocated=%08x, unallocated=%08x)",
+    //         regMask, mRegs, mRegs&regMask);
     mRegs &= ~regMask;
 }
 

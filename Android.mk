@@ -15,14 +15,4 @@
 #
 LOCAL_PATH := $(my-dir)
 
-ifneq ($(TARGET_SIMULATOR),true)
-  include $(call first-makefiles-under,$(LOCAL_PATH))
-else
-  include $(addprefix $(LOCAL_PATH)/,$(addsuffix /Android.mk, \
-	      libcutils \
-              liblog \
-	      libnetutils \
-	      libpixelflinger \
-	      libzipfile \
-	   ))
-endif
+include $(call first-makefiles-under,$(LOCAL_PATH))

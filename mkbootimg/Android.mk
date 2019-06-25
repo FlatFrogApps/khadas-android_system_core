@@ -2,10 +2,19 @@
 LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
 
-LOCAL_SRC_FILES := mkbootimg.c
+LOCAL_SRC_FILES := mkbootimg
+LOCAL_MODULE_CLASS := EXECUTABLES
+LOCAL_IS_HOST_MODULE := true
 
 LOCAL_MODULE := mkbootimg
 
-include $(BUILD_HOST_EXECUTABLE)
+include $(BUILD_PREBUILT)
 
-$(call dist-for-goals,user userdebug droid,$(LOCAL_BUILT_MODULE))
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES := unpack_bootimg
+LOCAL_MODULE_CLASS := EXECUTABLES
+LOCAL_IS_HOST_MODULE := true
+
+LOCAL_MODULE := unpack_bootimg
+
+include $(BUILD_PREBUILT)

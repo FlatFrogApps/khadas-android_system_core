@@ -2,29 +2,30 @@
 **
 ** Copyright 2006, The Android Open Source Project
 **
-** Licensed under the Apache License, Version 2.0 (the "License"); 
-** you may not use this file except in compliance with the License. 
-** You may obtain a copy of the License at 
+** Licensed under the Apache License, Version 2.0 (the "License");
+** you may not use this file except in compliance with the License.
+** You may obtain a copy of the License at
 **
-**     http://www.apache.org/licenses/LICENSE-2.0 
+**     http://www.apache.org/licenses/LICENSE-2.0
 **
-** Unless required by applicable law or agreed to in writing, software 
-** distributed under the License is distributed on an "AS IS" BASIS, 
-** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. 
-** See the License for the specific language governing permissions and 
+** Unless required by applicable law or agreed to in writing, software
+** distributed under the License is distributed on an "AS IS" BASIS,
+** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+** See the License for the specific language governing permissions and
 ** limitations under the License.
 */
 
+#define LOG_TAG "pixelflinger-code"
+
 #include <assert.h>
 #include <stdint.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/types.h>
 
-#include <cutils/log.h>
+#include <log/log.h>
 
-#include "codeflinger/GGLAssembler.h"
-
+#include "GGLAssembler.h"
 
 namespace android {
 
@@ -49,6 +50,12 @@ void GGLAssembler::build_fog(
 
         integer_t factor(scratches.obtain(), 16, CORRUPTIBLE);
         CONTEXT_LOAD(factor.reg, generated_vars.f);
+
+        // clamp fog factor (TODO: see if there is a way to guarantee
+        // we won't overflow, when setting the iterators)
+        BIC(AL, 0, factor.reg, factor.reg, reg_imm(factor.reg, ASR, 31));
+        CMP(AL, factor.reg, imm( 0x10000 ));
+        MOV(HS, 0, factor.reg, imm( 0x10000 ));
 
         build_blendFOneMinusF(temp, factor, fragment, fogColor);
     }
@@ -215,17 +222,7 @@ void GGLAssembler::build_blending(
                 build_blend_factor(dst_factor, fd,
                         component, pixel, fragment, fb, scratches);
                 mul_factor_add(temp, fb, dst_factor, component_t(fragment));
-                if (fd==GGL_ONE_MINUS_SRC_ALPHA) {
-                    // XXX: in theory this is not correct, we should
-                    // saturate here. However, this mode is often
-                    // used for displaying alpha-premultiplied graphics,
-                    // in which case, saturation is not necessary.
-                    // unfortunatelly, we have no way to know.
-                    // This is a case, where we sacrifice correctness for
-                    // performance. we should probably have some heuristics.
-                } else {
-                    component_sat(temp);
-                }
+                component_sat(temp);
             }
         } else {
             // compute fs
@@ -540,7 +537,7 @@ void GGLAssembler::mul_factor(  component_t& d,
         }
     }
 
-    LOGE_IF(ms>=32, "mul_factor overflow vs=%d, fs=%d", vs, fs);
+    ALOGE_IF(ms>=32, "mul_factor overflow vs=%d, fs=%d", vs, fs);
 
     int vreg = v.reg;
     int freg = f.reg;
@@ -578,7 +575,7 @@ void GGLAssembler::mul_factor_add(  component_t& d,
     int as = a.h;
     int ms = vs+fs;
 
-    LOGE_IF(ms>=32, "mul_factor_add overflow vs=%d, fs=%d, as=%d", vs, fs, as);
+    ALOGE_IF(ms>=32, "mul_factor_add overflow vs=%d, fs=%d, as=%d", vs, fs, as);
 
     integer_t add(a.reg, a.h, a.flags);
 

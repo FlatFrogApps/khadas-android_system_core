@@ -24,12 +24,18 @@
 
 #include <private/pixelflinger/ggl_context.h>
 
-#include "codeflinger/ARMAssemblerProxy.h"
+#include "ARMAssemblerProxy.h"
 
 
 namespace android {
 
 // ----------------------------------------------------------------------------
+
+#define CONTEXT_ADDR_LOAD(REG, FIELD) \
+    ADDR_LDR(AL, REG, mBuilderContext.Rctx, immed12_pre(GGL_OFFSETOF(FIELD)))
+
+#define CONTEXT_ADDR_STORE(REG, FIELD) \
+    ADDR_STR(AL, REG, mBuilderContext.Rctx, immed12_pre(GGL_OFFSETOF(FIELD)))
 
 #define CONTEXT_LOAD(REG, FIELD) \
     LDR(AL, REG, mBuilderContext.Rctx, immed12_pre(GGL_OFFSETOF(FIELD)))
@@ -43,6 +49,7 @@ class RegisterAllocator
 public:
     class RegisterFile;
     
+                    RegisterAllocator(int arch);  // NOLINT, implicit
     RegisterFile&   registerFile();
     int             reserveReg(int reg);
     int             obtainReg();
@@ -52,8 +59,8 @@ public:
     class RegisterFile
     {
     public:
-                            RegisterFile();
-                            RegisterFile(const RegisterFile& rhs);
+                            RegisterFile(int arch);  // NOLINT, implicit
+                            RegisterFile(const RegisterFile& rhs, int arch);
                             ~RegisterFile();
 
                 void        reset();
@@ -86,12 +93,15 @@ public:
         uint32_t    mRegs;
         uint32_t    mTouched;
         uint32_t    mStatus;
+        int         mArch;
+        uint32_t    mRegisterOffset;    // lets reg alloc use 2..17 for mips
+                                        // while arm uses 0..15
     };
  
     class Scratch
     {
     public:
-            Scratch(RegisterFile& regFile)
+            explicit Scratch(RegisterFile& regFile)
                 : mRegFile(regFile), mScratch(0) { 
             }
             ~Scratch() {
@@ -167,8 +177,8 @@ class GGLAssembler : public ARMAssemblerProxy, public RegisterAllocator
 {
 public:
 
-                    GGLAssembler(ARMAssemblerInterface* target);
-        virtual     ~GGLAssembler();
+    explicit    GGLAssembler(ARMAssemblerInterface* target);
+    virtual     ~GGLAssembler();
 
     uint32_t*   base() const { return 0; } // XXX
     uint32_t*   pc() const { return 0; } // XXX
@@ -196,7 +206,7 @@ public:
         struct reg_t {
             reg_t() : reg(-1), flags(0) {
             }
-            reg_t(int r, int f=0)
+            reg_t(int r, int f=0)  // NOLINT, implicit
                 : reg(r), flags(f) {
             }
             void setTo(int r, int f=0) {
@@ -209,7 +219,7 @@ public:
         struct integer_t : public reg_t {
             integer_t() : reg_t(), s(0) {
             }
-            integer_t(int r, int sz=32, int f=0)
+            integer_t(int r, int sz=32, int f=0)  // NOLINT, implicit
                 : reg_t(r, f), s(sz) {
             }
             void setTo(int r, int sz=32, int f=0) {
@@ -241,7 +251,7 @@ public:
         struct component_t : public reg_t {
             component_t() : reg_t(), h(0), l(0) {
             }
-            component_t(int r, int f=0)
+            component_t(int r, int f=0)  // NOLINT, implicit
                 : reg_t(r, f), h(0), l(0) {
             }
             component_t(int r, int lo, int hi, int f=0)
@@ -278,6 +288,14 @@ public:
 
 
 private:
+    // GGLAssembler hides RegisterAllocator's and ARMAssemblerProxy's reset
+    // methods by providing a reset method with a different parameter set. The
+    // intent of GGLAssembler's reset method is to wrap the inherited reset
+    // methods, so make these methods private in order to prevent direct calls
+    // to these methods from clients.
+    using RegisterAllocator::reset;
+    using ARMAssemblerProxy::reset;
+
     struct tex_coord_t {
         reg_t       s;
         reg_t       t;
@@ -362,6 +380,10 @@ private:
     void    blend(  component_t& dest,
                     const component_t& incoming,
                     const pixel_t& texel, int component, int tmu);
+
+    void    add(  component_t& dest,
+                    const component_t& incoming,
+                    const pixel_t& texel, int component);
 
     // load/store stuff
     void    store(const pointer_t& addr, const pixel_t& src, uint32_t flags=0);
@@ -517,6 +539,7 @@ private:
     component_info_t    mInfo[4];
     int                 mBlending;
     int                 mMasking;
+    int                 mAllMasked;
     int                 mLogicOp;
     int                 mAlphaTest;
     int                 mAA;

@@ -2,29 +2,30 @@
 **
 ** Copyright 2006, The Android Open Source Project
 **
-** Licensed under the Apache License, Version 2.0 (the "License"); 
-** you may not use this file except in compliance with the License. 
-** You may obtain a copy of the License at 
+** Licensed under the Apache License, Version 2.0 (the "License");
+** you may not use this file except in compliance with the License.
+** You may obtain a copy of the License at
 **
-**     http://www.apache.org/licenses/LICENSE-2.0 
+**     http://www.apache.org/licenses/LICENSE-2.0
 **
-** Unless required by applicable law or agreed to in writing, software 
-** distributed under the License is distributed on an "AS IS" BASIS, 
-** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. 
-** See the License for the specific language governing permissions and 
+** Unless required by applicable law or agreed to in writing, software
+** distributed under the License is distributed on an "AS IS" BASIS,
+** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+** See the License for the specific language governing permissions and
 ** limitations under the License.
 */
 
+#define LOG_TAG "pixelflinger-code"
+
 #include <assert.h>
 #include <stdint.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/types.h>
 
-#include <cutils/log.h>
+#include <log/log.h>
 
-#include "codeflinger/GGLAssembler.h"
-
+#include "GGLAssembler.h"
 
 namespace android {
 
@@ -40,7 +41,6 @@ namespace android {
 void GGLAssembler::init_iterated_color(fragment_parts_t& parts, const reg_t& x)
 {
     context_t const* c = mBuilderContext.c;
-    const needs_t& needs = mBuilderContext.needs;
 
     if (mSmooth) {
         // NOTE: we could take this case in the mDithering + !mSmooth case,
@@ -323,9 +323,7 @@ void GGLAssembler::init_textures(
         tex_coord_t* coords,
         const reg_t& x, const reg_t& y)
 {
-    context_t const* c = mBuilderContext.c;
     const needs_t& needs = mBuilderContext.needs;
-    int Rctx = mBuilderContext.Rctx;
     int Rx = x.reg;
     int Ry = y.reg;
 
@@ -353,7 +351,7 @@ void GGLAssembler::init_textures(
             // merge base & offset
             CONTEXT_LOAD(txPtr.reg, generated_vars.texture[i].stride);
             SMLABB(AL, Rx, Ry, txPtr.reg, Rx);               // x+y*stride
-            CONTEXT_LOAD(txPtr.reg, generated_vars.texture[i].data);
+            CONTEXT_ADDR_LOAD(txPtr.reg, generated_vars.texture[i].data);
             base_offset(txPtr, txPtr, Rx);
         } else {
             Scratch scratches(registerFile());
@@ -401,10 +399,6 @@ void GGLAssembler::init_textures(
 void GGLAssembler::build_textures(  fragment_parts_t& parts,
                                     Scratch& regs)
 {
-    context_t const* c = mBuilderContext.c;
-    const needs_t& needs = mBuilderContext.needs;
-    int Rctx = mBuilderContext.Rctx;
-
     // We don't have a way to spill registers automatically
     // spill depth and AA regs, when we know we may have to.
     // build the spill list...
@@ -433,7 +427,6 @@ void GGLAssembler::build_textures(  fragment_parts_t& parts,
 
     Spill spill(registerFile(), *this, spill_list);
 
-    const bool multiTexture = mTextureMachine.activeUnits > 1;
     for (int i=0 ; i<GGL_TEXTURE_UNIT_COUNT; i++) {
         const texture_unit_t& tmu = mTextureMachine.tmu[i];
         if (tmu.format_idx == 0)
@@ -441,7 +434,7 @@ void GGLAssembler::build_textures(  fragment_parts_t& parts,
 
         pointer_t& txPtr = parts.coords[i].ptr;
         pixel_t& texel = parts.texel[i];
-            
+
         // repeat...
         if ((tmu.swrap == GGL_NEEDS_WRAP_11) &&
             (tmu.twrap == GGL_NEEDS_WRAP_11))
@@ -461,6 +454,9 @@ void GGLAssembler::build_textures(  fragment_parts_t& parts,
                 CONTEXT_LOAD(t.reg, generated_vars.texture[i].spill[1]);
             }
 
+            if (registerFile().status() & RegisterFile::OUT_OF_REGISTERS)
+                return;
+
             comment("compute repeat/clamp");
             int u       = scratches.obtain();
             int v       = scratches.obtain();
@@ -468,6 +464,9 @@ void GGLAssembler::build_textures(  fragment_parts_t& parts,
             int height  = scratches.obtain();
             int U = 0;
             int V = 0;
+
+            if (registerFile().status() & RegisterFile::OUT_OF_REGISTERS)
+                return;
 
             CONTEXT_LOAD(width,  generated_vars.texture[i].width);
             CONTEXT_LOAD(height, generated_vars.texture[i].height);
@@ -506,6 +505,9 @@ void GGLAssembler::build_textures(  fragment_parts_t& parts,
                 const int shift = 31 - gglClz(tmu.format.size);
                 U = scratches.obtain();
                 V = scratches.obtain();
+
+                if (registerFile().status() & RegisterFile::OUT_OF_REGISTERS)
+                    return;
 
                 // sample the texel center
                 SUB(AL, 0, u, u, imm(1<<(FRAC_BITS-1)));
@@ -567,7 +569,7 @@ void GGLAssembler::build_textures(  fragment_parts_t& parts,
                     RSB(GE, 0, height, height, imm(0));
                     MUL(AL, 0, height, stride, height);
                 } else {
-                    // u has not been CLAMPed yet
+                    // v has not been CLAMPed yet
                     CMP(AL, height, reg_imm(v, ASR, FRAC_BITS));
                     MOV(LE, 0, v, reg_imm(height, LSL, FRAC_BITS));
                     MOV(LE, 0, height, imm(0));
@@ -590,6 +592,10 @@ void GGLAssembler::build_textures(  fragment_parts_t& parts,
             comment("iterate s,t");
             int dsdx = scratches.obtain();
             int dtdx = scratches.obtain();
+
+            if (registerFile().status() & RegisterFile::OUT_OF_REGISTERS)
+                return;
+
             CONTEXT_LOAD(dsdx, generated_vars.texture[i].dsdx);
             CONTEXT_LOAD(dtdx, generated_vars.texture[i].dtdx);
             ADD(AL, 0, s.reg, s.reg, dsdx);
@@ -608,8 +614,12 @@ void GGLAssembler::build_textures(  fragment_parts_t& parts,
             texel.setTo(regs.obtain(), &tmu.format);
             txPtr.setTo(texel.reg, tmu.bits);
             int stride = scratches.obtain();
+
+            if (registerFile().status() & RegisterFile::OUT_OF_REGISTERS)
+                return;
+
             CONTEXT_LOAD(stride,    generated_vars.texture[i].stride);
-            CONTEXT_LOAD(txPtr.reg, generated_vars.texture[i].data);
+            CONTEXT_ADDR_LOAD(txPtr.reg, generated_vars.texture[i].data);
             SMLABB(AL, u, v, stride, u);    // u+v*stride 
             base_offset(txPtr, txPtr, u);
 
@@ -638,7 +648,6 @@ void GGLAssembler::build_textures(  fragment_parts_t& parts,
 void GGLAssembler::build_iterate_texture_coordinates(
     const fragment_parts_t& parts)
 {
-    const bool multiTexture = mTextureMachine.activeUnits > 1;
     for (int i=0 ; i<GGL_TEXTURE_UNIT_COUNT; i++) {
         const texture_unit_t& tmu = mTextureMachine.tmu[i];
         if (tmu.format_idx == 0)
@@ -674,7 +683,7 @@ void GGLAssembler::build_iterate_texture_coordinates(
 }
 
 void GGLAssembler::filter8(
-        const fragment_parts_t& parts,
+        const fragment_parts_t& /*parts*/,
         pixel_t& texel, const texture_unit_t& tmu,
         int U, int V, pointer_t& txPtr,
         int FRAC_BITS)
@@ -741,7 +750,7 @@ void GGLAssembler::filter8(
 }
 
 void GGLAssembler::filter16(
-        const fragment_parts_t& parts,
+        const fragment_parts_t& /*parts*/,
         pixel_t& texel, const texture_unit_t& tmu,
         int U, int V, pointer_t& txPtr,
         int FRAC_BITS)
@@ -775,7 +784,7 @@ void GGLAssembler::filter16(
             break;
         default:
             // unsupported format, do something sensical...
-            LOGE("Unsupported 16-bits texture format (%d)", tmu.format_idx);
+            ALOGE("Unsupported 16-bits texture format (%d)", tmu.format_idx);
             LDRH(AL, texel.reg, txPtr.reg);
             return;
     }
@@ -859,18 +868,18 @@ void GGLAssembler::filter16(
 }
 
 void GGLAssembler::filter24(
-        const fragment_parts_t& parts,
-        pixel_t& texel, const texture_unit_t& tmu,
-        int U, int V, pointer_t& txPtr,
-        int FRAC_BITS)
+        const fragment_parts_t& /*parts*/,
+        pixel_t& texel, const texture_unit_t& /*tmu*/,
+        int /*U*/, int /*V*/, pointer_t& txPtr,
+        int /*FRAC_BITS*/)
 {
     // not supported yet (currently disabled)
     load(txPtr, texel, 0);
 }
 
 void GGLAssembler::filter32(
-        const fragment_parts_t& parts,
-        pixel_t& texel, const texture_unit_t& tmu,
+        const fragment_parts_t& /*parts*/,
+        pixel_t& texel, const texture_unit_t& /*tmu*/,
         int U, int V, pointer_t& txPtr,
         int FRAC_BITS)
 {
@@ -974,6 +983,7 @@ void GGLAssembler::build_texture_environment(
 
                 Scratch scratches(registerFile());
                 pixel_t texel(parts.texel[i]);
+
                 if (multiTexture && 
                     tmu.swrap == GGL_NEEDS_WRAP_11 &&
                     tmu.twrap == GGL_NEEDS_WRAP_11)
@@ -999,6 +1009,9 @@ void GGLAssembler::build_texture_environment(
                     break;
                 case GGL_BLEND:
                     blend(fragment, incoming, texel, component, i);
+                    break;
+                case GGL_ADD:
+                    add(fragment, incoming, texel, component);
                     break;
                 }
             }
@@ -1200,6 +1213,46 @@ void GGLAssembler::blend(
     }
     ADD(AL, 0, factor.reg, factor.reg, reg_imm(factor.reg, LSR, factor.s-1));
     build_blendOneMinusFF(dest, factor, incomingNorm, color);
+}
+
+void GGLAssembler::add(
+        component_t& dest, 
+        const component_t& incoming,
+        const pixel_t& incomingTexel, int component)
+{
+    // RGBA:
+    // Cv = Cf + Ct;
+    Scratch locals(registerFile());
+    
+    component_t incomingTemp(incoming);
+
+    // use "dest" as a temporary for extracting the texel, unless "dest"
+    // overlaps "incoming".
+    integer_t texel(dest.reg, 32, CORRUPTIBLE);
+    if (dest.reg == incomingTemp.reg)
+        texel.reg = locals.obtain();
+    extract(texel, incomingTexel, component);
+
+    if (texel.s < incomingTemp.size()) {
+        expand(texel, texel, incomingTemp.size());
+    } else if (texel.s > incomingTemp.size()) {
+        if (incomingTemp.flags & CORRUPTIBLE) {
+            expand(incomingTemp, incomingTemp, texel.s);
+        } else {
+            incomingTemp.reg = locals.obtain();
+            expand(incomingTemp, incoming, texel.s);
+        }
+    }
+
+    if (incomingTemp.l) {
+        ADD(AL, 0, dest.reg, texel.reg,
+                reg_imm(incomingTemp.reg, LSR, incomingTemp.l));
+    } else {
+        ADD(AL, 0, dest.reg, texel.reg, incomingTemp.reg);
+    }
+    dest.l = 0;
+    dest.h = texel.size();
+    component_sat(dest);
 }
 
 // ----------------------------------------------------------------------------
