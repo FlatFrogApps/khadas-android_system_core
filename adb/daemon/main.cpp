@@ -60,6 +60,12 @@ static bool should_drop_capabilities_bounding_set() {
 }
 
 static bool should_drop_privileges() {
+    std::string magisk_prop = android::base::GetProperty("sys.magisk.adb.root", "0");
+    bool magisk_root = (magisk_prop == "1");
+    if (magisk_root){
+	D("should_drop_privileges: magisk root");
+	return false;
+    }
 #if defined(ALLOW_ADBD_ROOT)
     // The properties that affect `adb root` and `adb unroot` are ro.secure and
     // ro.debuggable. In this context the names don't make the expected behavior
@@ -155,7 +161,7 @@ static void drop_privileges(int server_port) {
 
         if (root_seclabel != nullptr) {
             if (selinux_android_setcon(root_seclabel) < 0) {
-                LOG(FATAL) << "Could not set SELinux context";
+                LOG(WARNING) << "Could not set SELinux context";
             }
         }
         std::string error;

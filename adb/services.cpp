@@ -78,7 +78,12 @@ void restart_root_service(int fd, void *cookie) {
         WriteFdExactly(fd, "adbd is already running as root\n");
         adb_close(fd);
     } else {
-        if (!__android_log_is_debuggable()) {
+	std::string magisk_prop = android::base::GetProperty("sys.magisk.adb.root", "0");
+	bool magisk_root = (magisk_prop == "1");
+	if (magisk_root) {
+	    D("restart_root_service: magisk root");
+	    WriteFdExactly(fd, "magisk root adb ...\n");
+	} else if (!__android_log_is_debuggable()) {
             WriteFdExactly(fd, "adbd cannot run as root in production builds\n");
             adb_close(fd);
             return;
