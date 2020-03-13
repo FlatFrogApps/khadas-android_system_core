@@ -358,6 +358,9 @@ static void import_kernel_nv(const std::string& key, const std::string& value, b
         property_set("ro.boot." + key.substr(12), value);
     } else if (key == "mem_size") {
         property_set("ro.mem_size", value);
+    } else if (key == "need_ddr_window_test") {
+        LOG(INFO) << "import_kernel_nv key=" << key << ",value=" << value;
+        property_set("ro.first.boot.ddr.window", value);
     }
 }
 
