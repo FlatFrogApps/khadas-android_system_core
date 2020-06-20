@@ -18,6 +18,8 @@
 
 #include <assert.h>
 
+#include <android-base/macros.h>
+
 #include "buffer.h"
 
 namespace android {
@@ -93,7 +95,7 @@ void ggl_pick_texture(context_t* c)
         gen.width   = s.width;
         gen.height  = s.height;
         gen.stride  = s.stride;
-        gen.data    = int32_t(s.data);
+        gen.data    = uintptr_t(s.data);
     }
 }
 
@@ -130,7 +132,7 @@ void read_pixel(const surface_t* s, context_t* c,
     }
 }
 
-void readRGB565(const surface_t* s, context_t* c,
+void readRGB565(const surface_t* s, context_t* /*c*/,
         uint32_t x, uint32_t y, pixel_t* pixel)
 {
     uint16_t v = *(reinterpret_cast<uint16_t*>(s->data) + (x + (s->stride * y)));
@@ -144,7 +146,7 @@ void readRGB565(const surface_t* s, context_t* c,
     pixel->s[3] = 5;
 }
 
-void readABGR8888(const surface_t* s, context_t* c,
+void readABGR8888(const surface_t* s, context_t* /*c*/,
         uint32_t x, uint32_t y, pixel_t* pixel)
 {
     uint32_t v = *(reinterpret_cast<uint32_t*>(s->data) + (x + (s->stride * y)));
@@ -266,8 +268,11 @@ uint32_t ggl_pack_color(context_t* c, int32_t format,
     p = downshift_component(p, b,   hbits, lbits,  f->bh, f->bl, 0, 1, -1);
     p = downshift_component(p, a,   hbits, lbits,  f->ah, f->al, 0, 1, -1);
     switch (f->size) {
-    case 1: p |= p << 8;    // fallthrough
-    case 2: p |= p << 16;
+        case 1:
+            p |= p << 8;
+            FALLTHROUGH_INTENDED;
+        case 2:
+            p |= p << 16;
     }
     return p;
 }

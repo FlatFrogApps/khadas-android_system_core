@@ -2,16 +2,16 @@
 **
 ** Copyright 2006, The Android Open Source Project
 **
-** Licensed under the Apache License, Version 2.0 (the "License"); 
-** you may not use this file except in compliance with the License. 
-** You may obtain a copy of the License at 
+** Licensed under the Apache License, Version 2.0 (the "License");
+** you may not use this file except in compliance with the License.
+** You may obtain a copy of the License at
 **
-**     http://www.apache.org/licenses/LICENSE-2.0 
+**     http://www.apache.org/licenses/LICENSE-2.0
 **
-** Unless required by applicable law or agreed to in writing, software 
-** distributed under the License is distributed on an "AS IS" BASIS, 
-** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. 
-** See the License for the specific language governing permissions and 
+** Unless required by applicable law or agreed to in writing, software
+** distributed under the License is distributed on an "AS IS" BASIS,
+** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+** See the License for the specific language governing permissions and
 ** limitations under the License.
 */
 
@@ -19,18 +19,14 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <cutils/log.h>
+
 #include <cutils/properties.h>
-
-#if defined(WITH_LIB_HARDWARE)
-#include <hardware/qemu_tracing.h>
-#endif
-
+#include <log/log.h>
 #include <private/pixelflinger/ggl_context.h>
 
-#include "codeflinger/ARMAssembler.h"
-#include "codeflinger/CodeCache.h"
-#include "codeflinger/disassem.h"
+#include "ARMAssembler.h"
+#include "CodeCache.h"
+#include "disassem.h"
 
 // ----------------------------------------------------------------------------
 
@@ -48,9 +44,6 @@ ARMAssembler::ARMAssembler(const sp<Assembly>& assembly)
 {
     mBase = mPC = (uint32_t *)assembly->base();
     mDuration = ggl_system_time();
-#if defined(WITH_LIB_HARDWARE)
-    mQemuTracing = true;
-#endif
 }
 
 ARMAssembler::~ARMAssembler()
@@ -76,6 +69,11 @@ void ARMAssembler::reset()
     mComments.clear();
 }
 
+int ARMAssembler::getCodegenArch()
+{
+    return CODEGEN_ARCH_ARM;
+}
+
 // ----------------------------------------------------------------------------
 
 void ARMAssembler::disassemble(const char* name)
@@ -94,8 +92,8 @@ void ARMAssembler::disassemble(const char* name)
         if (comment >= 0) {
             printf("; %s\n", mComments.valueAt(comment));
         }
-        printf("%08x:    %08x    ", int(i), int(i[0]));
-        ::disassemble((u_int)i);
+        printf("%08x:    %08x    ", uintptr_t(i), int(i[0]));
+        ::disassemble((uintptr_t)i);
         i++;
     }
 }
@@ -173,18 +171,11 @@ int ARMAssembler::generate(const char* name)
     }
 
     mAssembly->resize( int(pc()-base())*4 );
-    
+
     // the instruction cache is flushed by CodeCache
     const int64_t duration = ggl_system_time() - mDuration;
     const char * const format = "generated %s (%d ins) at [%p:%p] in %lld ns\n";
-    LOGI(format, name, int(pc()-base()), base(), pc(), duration);
-
-#if defined(WITH_LIB_HARDWARE)
-    if (__builtin_expect(mQemuTracing, 0)) {
-        int err = qemu_add_mapping(int(base()), name);
-        mQemuTracing = (err >= 0);
-    }
-#endif
+    ALOGI(format, name, int(pc()-base()), base(), pc(), duration);
 
     char value[PROPERTY_VALUE_MAX];
     property_get("debug.pf.disasm", value, "0");
@@ -192,8 +183,8 @@ int ARMAssembler::generate(const char* name)
         printf(format, name, int(pc()-base()), base(), pc(), duration);
         disassemble(name);
     }
-    
-    return NO_ERROR;
+
+    return OK;
 }
 
 uint32_t* ARMAssembler::pcForLabel(const char* label)
@@ -222,14 +213,14 @@ void ARMAssembler::dataProcessing(int opcode, int cc,
 // multiply...
 void ARMAssembler::MLA(int cc, int s,
         int Rd, int Rm, int Rs, int Rn) {
-    if (Rd == Rm) { int t = Rm; Rm=Rs; Rs=t; } 
+    if (Rd == Rm) { int t = Rm; Rm=Rs; Rs=t; }
     LOG_FATAL_IF(Rd==Rm, "MLA(r%u,r%u,r%u,r%u)", Rd,Rm,Rs,Rn);
     *mPC++ =    (cc<<28) | (1<<21) | (s<<20) |
                 (Rd<<16) | (Rn<<12) | (Rs<<8) | 0x90 | Rm;
 }
 void ARMAssembler::MUL(int cc, int s,
         int Rd, int Rm, int Rs) {
-    if (Rd == Rm) { int t = Rm; Rm=Rs; Rs=t; } 
+    if (Rd == Rm) { int t = Rm; Rm=Rs; Rs=t; }
     LOG_FATAL_IF(Rd==Rm, "MUL(r%u,r%u,r%u)", Rd,Rm,Rs);
     *mPC++ = (cc<<28) | (s<<20) | (Rd<<16) | (Rs<<8) | 0x90 | Rm;
 }
@@ -334,7 +325,7 @@ void ARMAssembler::LDM(int cc, int dir,
 
 void ARMAssembler::STM(int cc, int dir,
         int Rn, int W, uint32_t reg_list)
-{   //                    FA EA FD ED      IB IA DB DA
+{   //                    ED FD EA FA      IB IA DB DA
     const uint8_t P[8] = { 0, 1, 0, 1,      1, 0, 1, 0 };
     const uint8_t U[8] = { 0, 0, 1, 1,      1, 1, 0, 0 };
     *mPC++ = (cc<<28) | (4<<25) | (uint32_t(P[dir])<<24) |
@@ -424,5 +415,165 @@ void ARMAssembler::SMLAW(int cc, int y,
     *mPC++ = (cc<<28) | 0x1200080 | (Rd<<16) | (Rn<<12) | (Rs<<8) | (y<<4) | Rm;
 }
 
-}; // namespace android
+#if 0
+#pragma mark -
+#pragma mark Byte/half word extract and extend (ARMv6+ only)...
+#endif
 
+void ARMAssembler::UXTB16(int cc, int Rd, int Rm, int rotate)
+{
+    *mPC++ = (cc<<28) | 0x6CF0070 | (Rd<<12) | ((rotate >> 3) << 10) | Rm;
+}
+#if 0
+#pragma mark -
+#pragma mark Bit manipulation (ARMv7+ only)...
+#endif
+
+// Bit manipulation (ARMv7+ only)...
+void ARMAssembler::UBFX(int cc, int Rd, int Rn, int lsb, int width)
+{
+    *mPC++ = (cc<<28) | 0x7E00000 | ((width-1)<<16) | (Rd<<12) | (lsb<<7) | 0x50 | Rn;
+}
+
+#if 0
+#pragma mark -
+#pragma mark Addressing modes...
+#endif
+
+int ARMAssembler::buildImmediate(
+        uint32_t immediate, uint32_t& rot, uint32_t& imm)
+{
+    rot = 0;
+    imm = immediate;
+    if (imm > 0x7F) { // skip the easy cases
+        while (!(imm&3)  || (imm&0xFC000000)) {
+            uint32_t newval;
+            newval = imm >> 2;
+            newval |= (imm&3) << 30;
+            imm = newval;
+            rot += 2;
+            if (rot == 32) {
+                rot = 0;
+                break;
+            }
+        }
+    }
+    rot = (16 - (rot>>1)) & 0xF;
+
+    if (imm>=0x100)
+        return -EINVAL;
+
+    if (((imm>>(rot<<1)) | (imm<<(32-(rot<<1)))) != immediate)
+        return -1;
+
+    return 0;
+}
+
+// shifters...
+
+bool ARMAssembler::isValidImmediate(uint32_t immediate)
+{
+    uint32_t rot, imm;
+    return buildImmediate(immediate, rot, imm) == 0;
+}
+
+uint32_t ARMAssembler::imm(uint32_t immediate)
+{
+    uint32_t rot, imm;
+    int err = buildImmediate(immediate, rot, imm);
+
+    LOG_ALWAYS_FATAL_IF(err==-EINVAL,
+                        "immediate %08x cannot be encoded",
+                        immediate);
+
+    LOG_ALWAYS_FATAL_IF(err,
+                        "immediate (%08x) encoding bogus!",
+                        immediate);
+
+    return (1<<25) | (rot<<8) | imm;
+}
+
+uint32_t ARMAssembler::reg_imm(int Rm, int type, uint32_t shift)
+{
+    return ((shift&0x1F)<<7) | ((type&0x3)<<5) | (Rm&0xF);
+}
+
+uint32_t ARMAssembler::reg_rrx(int Rm)
+{
+    return (ROR<<5) | (Rm&0xF);
+}
+
+uint32_t ARMAssembler::reg_reg(int Rm, int type, int Rs)
+{
+    return ((Rs&0xF)<<8) | ((type&0x3)<<5) | (1<<4) | (Rm&0xF);
+}
+
+// addressing modes...
+// LDR(B)/STR(B)/PLD (immediate and Rm can be negative, which indicate U=0)
+uint32_t ARMAssembler::immed12_pre(int32_t immed12, int W)
+{
+    LOG_ALWAYS_FATAL_IF(abs(immed12) >= 0x800,
+                        "LDR(B)/STR(B)/PLD immediate too big (%08x)",
+                        immed12);
+    return (1<<24) | (((uint32_t(immed12)>>31)^1)<<23) |
+            ((W&1)<<21) | (abs(immed12)&0x7FF);
+}
+
+uint32_t ARMAssembler::immed12_post(int32_t immed12)
+{
+    LOG_ALWAYS_FATAL_IF(abs(immed12) >= 0x800,
+                        "LDR(B)/STR(B)/PLD immediate too big (%08x)",
+                        immed12);
+
+    return (((uint32_t(immed12)>>31)^1)<<23) | (abs(immed12)&0x7FF);
+}
+
+uint32_t ARMAssembler::reg_scale_pre(int Rm, int type,
+        uint32_t shift, int W)
+{
+    return  (1<<25) | (1<<24) |
+            (((uint32_t(Rm)>>31)^1)<<23) | ((W&1)<<21) |
+            reg_imm(abs(Rm), type, shift);
+}
+
+uint32_t ARMAssembler::reg_scale_post(int Rm, int type, uint32_t shift)
+{
+    return (1<<25) | (((uint32_t(Rm)>>31)^1)<<23) | reg_imm(abs(Rm), type, shift);
+}
+
+// LDRH/LDRSB/LDRSH/STRH (immediate and Rm can be negative, which indicate U=0)
+uint32_t ARMAssembler::immed8_pre(int32_t immed8, int W)
+{
+    uint32_t offset = abs(immed8);
+
+    LOG_ALWAYS_FATAL_IF(abs(immed8) >= 0x100,
+                        "LDRH/LDRSB/LDRSH/STRH immediate too big (%08x)",
+                        immed8);
+
+    return  (1<<24) | (1<<22) | (((uint32_t(immed8)>>31)^1)<<23) |
+            ((W&1)<<21) | (((offset&0xF0)<<4)|(offset&0xF));
+}
+
+uint32_t ARMAssembler::immed8_post(int32_t immed8)
+{
+    uint32_t offset = abs(immed8);
+
+    LOG_ALWAYS_FATAL_IF(abs(immed8) >= 0x100,
+                        "LDRH/LDRSB/LDRSH/STRH immediate too big (%08x)",
+                        immed8);
+
+    return (1<<22) | (((uint32_t(immed8)>>31)^1)<<23) |
+            (((offset&0xF0)<<4) | (offset&0xF));
+}
+
+uint32_t ARMAssembler::reg_pre(int Rm, int W)
+{
+    return (1<<24) | (((uint32_t(Rm)>>31)^1)<<23) | ((W&1)<<21) | (abs(Rm)&0xF);
+}
+
+uint32_t ARMAssembler::reg_post(int Rm)
+{
+    return (((uint32_t(Rm)>>31)^1)<<23) | (abs(Rm)&0xF);
+}
+
+}; // namespace android

@@ -1,26 +1,24 @@
-# Copyright 2005 The Android Open Source Project
-
-ifeq ($(TARGET_ARCH),arm)
-
-LOCAL_PATH:= $(call my-dir)
-include $(CLEAR_VARS)
-
-LOCAL_SRC_FILES:= debuggerd.c getevent.c unwind-arm.c pr-support.c utility.c
-LOCAL_CFLAGS := -Wall
-LOCAL_MODULE := debuggerd
-
-LOCAL_STATIC_LIBRARIES := libcutils libc
-
-include $(BUILD_EXECUTABLE)
+LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
-LOCAL_SRC_FILES := crasher.c 
-LOCAL_SRC_FILES += crashglue.S
-LOCAL_MODULE := crasher 
-LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
-LOCAL_MODULE_TAGS := eng
-#LOCAL_FORCE_STATIC_EXECUTABLE := true
-LOCAL_SHARED_LIBRARIES := libcutils libc
-include $(BUILD_EXECUTABLE)
+LOCAL_MODULE := crash_dump.policy
+LOCAL_MODULE_CLASS := ETC
+LOCAL_MULTILIB := both
 
-endif # TARGET_ARCH == arm
+ifeq ($(TARGET_ARCH), $(filter $(TARGET_ARCH), arm arm64))
+LOCAL_MODULE_STEM_32 := crash_dump.arm.policy
+LOCAL_MODULE_STEM_64 := crash_dump.arm64.policy
+endif
+
+ifeq ($(TARGET_ARCH), $(filter $(TARGET_ARCH), x86 x86_64))
+LOCAL_MODULE_STEM_32 := crash_dump.x86.policy
+LOCAL_MODULE_STEM_64 := crash_dump.x86_64.policy
+endif
+
+LOCAL_MODULE_PATH := $(TARGET_OUT)/etc/seccomp_policy
+LOCAL_SRC_FILES_arm := seccomp_policy/crash_dump.arm.policy
+LOCAL_SRC_FILES_arm64 := seccomp_policy/crash_dump.arm64.policy
+LOCAL_SRC_FILES_x86 := seccomp_policy/crash_dump.x86.policy
+LOCAL_SRC_FILES_x86_64 := seccomp_policy/crash_dump.x86_64.policy
+LOCAL_MODULE_TARGET_ARCH := arm arm64 x86 x86_64
+include $(BUILD_PREBUILT)

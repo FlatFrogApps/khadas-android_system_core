@@ -18,8 +18,24 @@
 #define __ADB_H
 
 #include <limits.h>
+#include <stdint.h>
+#include <sys/types.h>
 
-#define MAX_PAYLOAD 4096
+#include <string>
+
+#include <android-base/macros.h>
+
+#include "adb_trace.h"
+#include "fdevent.h"
+#include "socket.h"
+#include "types.h"
+#include "usb.h"
+
+constexpr size_t MAX_PAYLOAD_V1 = 4 * 1024;
+constexpr size_t MAX_PAYLOAD = 1024 * 1024;
+constexpr size_t MAX_FRAMEWORK_PAYLOAD = 64 * 1024;
+
+constexpr size_t LINUX_MAX_SOCKET_SIZE = 4194304;
 
 #define A_SYNC 0x434e5953
 #define A_CNXN 0x4e584e43
@@ -27,381 +43,214 @@
 #define A_OKAY 0x59414b4f
 #define A_CLSE 0x45534c43
 #define A_WRTE 0x45545257
+#define A_AUTH 0x48545541
 
-#define A_VERSION 0x01000000        // ADB protocol version
+// ADB protocol version.
+// Version revision:
+// 0x01000000: original
+// 0x01000001: skip checksum (Dec 2017)
+#define A_VERSION_MIN 0x01000000
+#define A_VERSION_SKIP_CHECKSUM 0x01000001
+#define A_VERSION 0x01000001
 
-#define ADB_VERSION_MAJOR 1         // Used for help/version information
-#define ADB_VERSION_MINOR 0         // Used for help/version information
+// Used for help/version information.
+#define ADB_VERSION_MAJOR 1
+#define ADB_VERSION_MINOR 0
 
-#define ADB_SERVER_VERSION    20    // Increment this when we want to force users to start a new adb server
+std::string adb_version();
 
-typedef struct amessage amessage;
-typedef struct apacket apacket;
-typedef struct asocket asocket;
-typedef struct alistener alistener;
-typedef struct aservice aservice;
-typedef struct atransport atransport;
-typedef struct adisconnect  adisconnect;
-typedef struct usb_handle usb_handle;
+// Increment this when we want to force users to start a new adb server.
+#define ADB_SERVER_VERSION 41
 
-struct amessage {
-    unsigned command;       /* command identifier constant      */
-    unsigned arg0;          /* first argument                   */
-    unsigned arg1;          /* second argument                  */
-    unsigned data_length;   /* length of payload (0 is allowed) */
-    unsigned data_check;    /* checksum of data payload         */
-    unsigned magic;         /* command ^ 0xffffffff             */
-};
+using TransportId = uint64_t;
+class atransport;
 
-struct apacket
-{
-    apacket *next;
-
-    unsigned len;
-    unsigned char *ptr;
-
-    amessage msg;
-    unsigned char data[MAX_PAYLOAD];
-};
-
-/* An asocket represents one half of a connection between a local and
-** remote entity.  A local asocket is bound to a file descriptor.  A
-** remote asocket is bound to the protocol engine.
-*/
-struct asocket {
-        /* chain pointers for the local/remote list of
-        ** asockets that this asocket lives in
-        */
-    asocket *next;
-    asocket *prev;
-
-        /* the unique identifier for this asocket
-        */
-    unsigned id;
-
-        /* flag: set when the socket's peer has closed
-        ** but packets are still queued for delivery
-        */
-    int    closing;
-
-        /* the asocket we are connected to
-        */
-
-    asocket *peer;
-
-        /* For local asockets, the fde is used to bind
-        ** us to our fd event system.  For remote asockets
-        ** these fields are not used.
-        */
-    fdevent fde;
-    int fd;
-
-        /* queue of apackets waiting to be written
-        */
-    apacket *pkt_first;
-    apacket *pkt_last;
-
-        /* enqueue is called by our peer when it has data
-        ** for us.  It should return 0 if we can accept more
-        ** data or 1 if not.  If we return 1, we must call
-        ** peer->ready() when we once again are ready to
-        ** receive data.
-        */
-    int (*enqueue)(asocket *s, apacket *pkt);
-
-        /* ready is called by the peer when it is ready for
-        ** us to send data via enqueue again
-        */
-    void (*ready)(asocket *s);
-
-        /* close is called by the peer when it has gone away.
-        ** we are not allowed to make any further calls on the
-        ** peer once our close method is called.
-        */
-    void (*close)(asocket *s);
-
-        /* socket-type-specific extradata */
-    void *extra;
-
-    	/* A socket is bound to atransport */
-    atransport *transport;
-};
-
+uint32_t calculate_apacket_checksum(const apacket* packet);
 
 /* the adisconnect structure is used to record a callback that
 ** will be called whenever a transport is disconnected (e.g. by the user)
 ** this should be used to cleanup objects that depend on the
 ** transport (e.g. remote sockets, listeners, etc...)
 */
-struct  adisconnect
-{
-    void        (*func)(void*  opaque, atransport*  t);
-    void*         opaque;
-    adisconnect*  next;
-    adisconnect*  prev;
+struct adisconnect {
+    void (*func)(void* opaque, atransport* t);
+    void* opaque;
 };
 
-
-/* a transport object models the connection to a remote device or emulator
-** there is one transport per connected device/emulator. a "local transport"
-** connects through TCP (for the emulator), while a "usb transport" through
-** USB (for real devices)
-**
-** note that kTransportHost doesn't really correspond to a real transport
-** object, it's a special value used to indicate that a client wants to
-** connect to a service implemented within the ADB server itself.
-*/
-typedef enum transport_type {
-        kTransportUsb,
-        kTransportLocal,
-        kTransportAny,
-        kTransportHost,
-} transport_type;
-
-struct atransport
-{
-    atransport *next;
-    atransport *prev;
-
-    int (*read_from_remote)(apacket *p, atransport *t);
-    int (*write_to_remote)(apacket *p, atransport *t);
-    void (*close)(atransport *t);
-    void (*kick)(atransport *t);
-
-    int fd;
-    int transport_socket;
-    fdevent transport_fde;
-    int ref_count;
-    unsigned sync_token;
-    int connection_state;
-    transport_type type;
-
-        /* usb handle or socket fd as needed */
-    usb_handle *usb;
-    int sfd;
-
-        /* used to identify transports for clients */
-    char *serial;
-    char *product;
-
-        /* a list of adisconnect callbacks called when the transport is kicked */
-    int          kicked;
-    adisconnect  disconnects;
+// A transport object models the connection to a remote device or emulator there
+// is one transport per connected device/emulator. A "local transport" connects
+// through TCP (for the emulator), while a "usb transport" through USB (for real
+// devices).
+//
+// Note that kTransportHost doesn't really correspond to a real transport
+// object, it's a special value used to indicate that a client wants to connect
+// to a service implemented within the ADB server itself.
+enum TransportType {
+    kTransportUsb,
+    kTransportLocal,
+    kTransportAny,
+    kTransportHost,
 };
 
+#define TOKEN_SIZE 20
 
-/* A listener is an entity which binds to a local port
-** and, upon receiving a connection on that port, creates
-** an asocket to connect the new local connection to a
-** specific remote service.
-**
-** TODO: some listeners read from the new connection to
-** determine what exact service to connect to on the far
-** side.
-*/
-struct alistener
-{
-    alistener *next;
-    alistener *prev;
+enum ConnectionState {
+    kCsAny = -1,
 
-    fdevent fde;
-    int fd;
+    kCsConnecting = 0,  // Haven't received a response from the device yet.
+    kCsAuthorizing,     // Authorizing with keys from ADB_VENDOR_KEYS.
+    kCsUnauthorized,    // ADB_VENDOR_KEYS exhausted, fell back to user prompt.
+    kCsNoPerm,          // Insufficient permissions to communicate with the device.
+    kCsOffline,
 
-    const char *local_name;
-    const char *connect_to;
-    atransport *transport;
-    adisconnect  disconnect;
+    kCsBootloader,
+    kCsDevice,
+    kCsHost,
+    kCsRecovery,
+    kCsSideload,
+    kCsRescue,
 };
 
+inline bool ConnectionStateIsOnline(ConnectionState state) {
+    switch (state) {
+        case kCsBootloader:
+        case kCsDevice:
+        case kCsHost:
+        case kCsRecovery:
+        case kCsSideload:
+        case kCsRescue:
+            return true;
+        default:
+            return false;
+    }
+}
 
-void print_packet(const char *label, apacket *p);
+void print_packet(const char* label, apacket* p);
 
-asocket *find_local_socket(unsigned id);
-void install_local_socket(asocket *s);
-void remove_socket(asocket *s);
-void close_all_sockets(atransport *t);
+void handle_packet(apacket* p, atransport* t);
 
-#define  LOCAL_CLIENT_PREFIX  "emulator-"
-
-asocket *create_local_socket(int fd);
-asocket *create_local_service_socket(const char *destination);
-
-asocket *create_remote_socket(unsigned id, atransport *t);
-void connect_to_remote(asocket *s, const char *destination);
-void connect_to_smartsocket(asocket *s);
-
-void fatal(const char *fmt, ...);
-void fatal_errno(const char *fmt, ...);
-
-void handle_packet(apacket *p, atransport *t);
-void send_packet(apacket *p, atransport *t);
-
-void get_my_path(char s[PATH_MAX]);
-int launch_server();
-int adb_main(int is_daemon);
-
-
-/* transports are ref-counted
-** get_device_transport does an acquire on your behalf before returning
-*/
-void init_transport_registration(void);
-int  list_transports(char *buf, size_t  bufsize);
-void update_transports(void);
-
-asocket*  create_device_tracker(void);
-
-/* Obtain a transport from the available transports.
-** If state is != CS_ANY, only transports in that state are considered.
-** If serial is non-NULL then only the device with that serial will be chosen.
-** If no suitable transport is found, error is set.
-*/
-atransport *acquire_one_transport(int state, transport_type ttype, const char* serial, char **error_out);
-void   add_transport_disconnect( atransport*  t, adisconnect*  dis );
-void   remove_transport_disconnect( atransport*  t, adisconnect*  dis );
-void   run_transport_disconnects( atransport*  t );
-void   kick_transport( atransport*  t );
+int launch_server(const std::string& socket_spec);
+int adb_server_main(int is_daemon, const std::string& socket_spec, int ack_reply_fd);
 
 /* initialize a transport object's func pointers and state */
-int  init_socket_transport(atransport *t, int s, int port);
-void init_usb_transport(atransport *t, usb_handle *usb);
+int init_socket_transport(atransport* t, unique_fd s, int port, int local);
+void init_usb_transport(atransport* t, usb_handle* usb);
 
-/* for MacOS X cleanup */
-void close_usb_devices();
-
-/* cause new transports to be init'd and added to the list */
-void register_socket_transport(int s, const char *serial, int  port);
-void register_usb_transport(usb_handle *h, const char *serial);
-
-int service_to_fd(const char *name);
+std::string getEmulatorSerialString(int console_port);
 #if ADB_HOST
-asocket *host_service_to_socket(const char*  name, const char *serial);
+atransport* find_emulator_transport_by_adb_port(int adb_port);
+atransport* find_emulator_transport_by_console_port(int console_port);
+#endif
+
+unique_fd service_to_fd(std::string_view name, atransport* transport);
+#if !ADB_HOST
+unique_fd daemon_service_to_fd(std::string_view name, atransport* transport);
+#endif
+
+#if ADB_HOST
+asocket* host_service_to_socket(std::string_view name, std::string_view serial,
+                                TransportId transport_id);
 #endif
 
 #if !ADB_HOST
-int       init_jdwp(void);
-asocket*  create_jdwp_service_socket();
-asocket*  create_jdwp_tracker_service_socket();
-int       create_jdwp_connection_fd(int  jdwp_pid);
+asocket* daemon_service_to_socket(std::string_view name);
 #endif
 
 #if !ADB_HOST
-void framebuffer_service(int fd, void *cookie);
-void log_service(int fd, void *cookie);
-void remount_service(int fd, void *cookie);
-char * get_log_file_path(const char * log_name);
+unique_fd execute_abb_command(std::string_view command);
 #endif
+
+#if !ADB_HOST
+int init_jdwp(void);
+asocket* create_jdwp_service_socket();
+asocket* create_jdwp_tracker_service_socket();
+unique_fd create_jdwp_connection_fd(int jdwp_pid);
+#endif
+
+bool handle_forward_request(const char* service, atransport* transport, int reply_fd);
+bool handle_forward_request(const char* service,
+                            std::function<atransport*(std::string* error)> transport_acquirer,
+                            int reply_fd);
 
 /* packet allocator */
-apacket *get_apacket(void);
-void put_apacket(apacket *p);
+apacket* get_apacket(void);
+void put_apacket(apacket* p);
 
-int check_header(apacket *p);
-int check_data(apacket *p);
+// Define it if you want to dump packets.
+#define DEBUG_PACKETS 0
 
-/* convenience wrappers around read/write that will retry on
-** EINTR and/or short read/write.  Returns 0 on success, -1
-** on error or EOF.
-*/
-int readx(int fd, void *ptr, size_t len);
-int writex(int fd, const void *ptr, size_t len);
+#if !DEBUG_PACKETS
+#define print_packet(tag, p) \
+    do {                     \
+    } while (0)
+#endif
 
-/* define ADB_TRACE to 1 to enable tracing support, or 0 to disable it */
-
-#define  ADB_TRACE    1
-
-/* IMPORTANT: if you change the following list, don't
- * forget to update the corresponding 'tags' table in
- * the adb_trace_init() function implemented in adb.c
+#if ADB_HOST_ON_TARGET
+/* adb and adbd are coexisting on the target, so use 5038 for adb
+ * to avoid conflicting with adbd's usage of 5037
  */
-typedef enum {
-    TRACE_ADB = 0,
-    TRACE_SOCKETS,
-    TRACE_PACKETS,
-    TRACE_TRANSPORT,
-    TRACE_RWX,
-    TRACE_USB,
-    TRACE_SYNC,
-    TRACE_SYSDEPS,
-    TRACE_JDWP,
-} AdbTrace;
-
-#if ADB_TRACE
-
-  int     adb_trace_mask;
-
-  void    adb_trace_init(void);
-
-#  define ADB_TRACING  ((adb_trace_mask & (1 << TRACE_TAG)) != 0)
-
-  /* you must define TRACE_TAG before using this macro */
-  #define  D(...)                                      \
-        do {                                           \
-            if (ADB_TRACING)                           \
-                fprintf(stderr, __VA_ARGS__ );         \
-        } while (0)
+#define DEFAULT_ADB_PORT 5038
 #else
-#  define  D(...)          ((void)0)
-#  define  ADB_TRACING     0
+#define DEFAULT_ADB_PORT 5037
 #endif
 
+#define DEFAULT_ADB_LOCAL_TRANSPORT_PORT 5555
 
-/* set this to log to /data/adb/adb_<time>.txt on the device.
- * has no effect if the /data/adb/ directory does not exist.
- */
-#define ADB_DEVICE_LOG 0
+#define ADB_CLASS 0xff
+#define ADB_SUBCLASS 0x42
+#define ADB_PROTOCOL 0x1
 
-#if !TRACE_PACKETS
-#define print_packet(tag,p) do {} while (0)
+void local_init(int port);
+bool local_connect(int port);
+int local_connect_arbitrary_ports(int console_port, int adb_port, std::string* error);
+
+ConnectionState connection_state(atransport* t);
+
+extern const char* adb_device_banner;
+
+#define CHUNK_SIZE (64 * 1024)
+
+// Argument delimeter for adb abb command.
+#define ABB_ARG_DELIMETER ('\0')
+
+#if !ADB_HOST
+#define USB_FFS_ADB_PATH "/dev/usb-ffs/adb/"
+#define USB_FFS_ADB_EP(x) USB_FFS_ADB_PATH #x
+
+#define USB_FFS_ADB_EP0 USB_FFS_ADB_EP(ep0)
+#define USB_FFS_ADB_OUT USB_FFS_ADB_EP(ep1)
+#define USB_FFS_ADB_IN USB_FFS_ADB_EP(ep2)
 #endif
 
-#define ADB_PORT 5037
-#define ADB_LOCAL_TRANSPORT_PORT 5555
+enum class HostRequestResult {
+    Handled,
+    SwitchedTransport,
+    Unhandled,
+};
 
-// Google's USB Vendor ID
-#define VENDOR_ID_GOOGLE        0x18d1
-// HTC's USB Vendor ID
-#define VENDOR_ID_HTC           0x0bb4
+HostRequestResult handle_host_request(std::string_view service, TransportType type,
+                                      const char* serial, TransportId transport_id, int reply_fd,
+                                      asocket* s);
 
-// products for VENDOR_ID_GOOGLE
-#define PRODUCT_ID_SOONER       0xd00d  // Sooner bootloader
-#define PRODUCT_ID_SOONER_COMP  0xdeed  // Sooner composite device
+void handle_online(atransport* t);
+void handle_offline(atransport* t);
 
-// products for VENDOR_ID_HTC
-#define PRODUCT_ID_DREAM        0x0c01  // Dream bootloader
-#define PRODUCT_ID_DREAM_COMP   0x0c02  // Dream composite device
+void send_connect(atransport* t);
 
-void local_init();
-int  local_connect(int  port);
+void parse_banner(const std::string&, atransport* t);
 
-/* usb host/client interface */
-void usb_init();
-void usb_cleanup();
-int usb_write(usb_handle *h, const void *data, int len);
-int usb_read(usb_handle *h, void *data, int len);
-int usb_close(usb_handle *h);
-void usb_kick(usb_handle *h);
+// On startup, the adb server needs to wait until all of the connected devices are ready.
+// To do this, we need to know when the scan has identified all of the potential new transports, and
+// when each transport becomes ready.
+// TODO: Do this for mDNS as well, instead of just USB?
 
-/* used for USB device detection */
-int is_adb_interface(int vid, int pid, int usb_class, int usb_subclass, int usb_protocol);
+// We've found all of the transports we potentially care about.
+void adb_notify_device_scan_complete();
 
-unsigned host_to_le32(unsigned n);
-int adb_commandline(int argc, char **argv);
+// One or more transports have changed status, check to see if we're ready.
+void update_transport_status();
 
-int connection_state(atransport *t);
-
-#define CS_ANY       -1
-#define CS_OFFLINE    0
-#define CS_BOOTLOADER 1
-#define CS_DEVICE     2
-#define CS_HOST       3
-#define CS_RECOVERY   4
-#define CS_ERROR      5
-
-extern int HOST;
-
-#define CHUNK_SIZE (64*1024)
-
-int sendfailmsg(int fd, const char *reason);
-int handle_host_request(char *service, transport_type ttype, char* serial, int reply_fd, asocket *s);
+// Wait until device scan has completed and every transport is ready, or a timeout elapses.
+void adb_wait_for_device_initialization();
 
 #endif

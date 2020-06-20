@@ -17,12 +17,31 @@
 #ifndef _INIT_PROPERTY_H
 #define _INIT_PROPERTY_H
 
-extern void handle_property_fd(int fd);
-extern void handle_property_set_fd(int fd);
-extern void property_init(void);
-extern int start_property_service(void);
-void get_property_workspace(int *fd, int *sz);
-extern const char* property_get(const char *name);
-extern int property_set(const char *name, const char *value);
+#include <sys/socket.h>
 
-#endif	/* _INIT_PROPERTY_H */
+#include <string>
+
+#include "epoll.h"
+
+namespace android {
+namespace init {
+
+bool CanReadProperty(const std::string& source_context, const std::string& name);
+
+extern uint32_t (*property_set)(const std::string& name, const std::string& value);
+
+uint32_t HandlePropertySet(const std::string& name, const std::string& value,
+                           const std::string& source_context, const ucred& cr, std::string* error);
+
+extern bool PropertyChildReap(pid_t pid);
+
+void property_init(void);
+void property_load_boot_defaults(bool);
+void load_persist_props(void);
+void load_system_props(void);
+void StartPropertyService(Epoll* epoll);
+
+}  // namespace init
+}  // namespace android
+
+#endif  /* _INIT_PROPERTY_H */

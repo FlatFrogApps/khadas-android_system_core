@@ -19,15 +19,17 @@
 #ifndef ANDROID_CODECACHE_H
 #define ANDROID_CODECACHE_H
 
+#include <atomic>
 #include <stdint.h>
 #include <pthread.h>
 #include <sys/types.h>
 
-#include <utils/KeyedVector.h>
-
+#include "utils/KeyedVector.h"
 #include "tinyutils/smartpointer.h"
 
 namespace android {
+
+using namespace tinyutils;
 
 // ----------------------------------------------------------------------------
 
@@ -41,7 +43,7 @@ template  <typename T>
 class AssemblyKey : public AssemblyKeyBase
 {
 public:
-    AssemblyKey(const T& rhs) : mKey(rhs) { }
+    explicit AssemblyKey(const T& rhs) : mKey(rhs) { }
     virtual int compare_type(const AssemblyKeyBase& key) const {
         const T& rhs = static_cast<const AssemblyKey&>(key).mKey;
         return android::compare_type(mKey, rhs);
@@ -55,7 +57,7 @@ private:
 class Assembly
 {
 public:
-                Assembly(size_t size);
+    explicit    Assembly(size_t size);
     virtual     ~Assembly();
 
     ssize_t     size() const;
@@ -68,9 +70,9 @@ public:
     typedef void    weakref_type;
 
 private:
-    mutable int32_t     mCount;
+    mutable std::atomic<int32_t>     mCount;
             uint32_t*   mBase;
-            ssize_t     mSize;
+            size_t      mSize;
 };
 
 // ----------------------------------------------------------------------------
@@ -79,13 +81,13 @@ class CodeCache
 {
 public:
 // pretty simple cache API...
-                CodeCache(size_t size);
-                ~CodeCache();
-    
-            sp<Assembly>        lookup(const AssemblyKeyBase& key) const;
+    explicit            CodeCache(size_t size);
+                        ~CodeCache();
 
-            int                 cache(  const AssemblyKeyBase& key,
-                                        const sp<Assembly>& assembly);
+    sp<Assembly>        lookup(const AssemblyKeyBase& key) const;
+
+    int                 cache(const AssemblyKeyBase& key,
+                              const sp<Assembly>& assembly);
 
 private:
     // nothing to see here...
@@ -104,7 +106,7 @@ private:
         const AssemblyKeyBase* mKey;
     public:
         key_t() { };
-        key_t(const AssemblyKeyBase& k) : mKey(&k)  { }
+        explicit key_t(const AssemblyKeyBase& k) : mKey(&k)  { }
     };
 
     mutable pthread_mutex_t             mLock;

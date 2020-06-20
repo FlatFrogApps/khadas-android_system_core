@@ -17,151 +17,42 @@
 #ifndef _INIT_INIT_H
 #define _INIT_INIT_H
 
-int mtd_name_to_number(const char *name);
+#include <sys/types.h>
 
-void handle_control_message(const char *msg, const char *arg);
+#include <functional>
+#include <string>
+#include <vector>
 
-int create_socket(const char *name, int type, mode_t perm,
-                  uid_t uid, gid_t gid);
+#include "action.h"
+#include "action_manager.h"
+#include "parser.h"
+#include "service.h"
 
-void *read_file(const char *fn, unsigned *_sz);
+namespace android {
+namespace init {
 
-void log_init(void);
-void log_set_level(int level);
-void log_close(void);
-void log_write(int level, const char *fmt, ...);
+// Note: These globals are *only* valid in init, so they should not be used in ueventd
+// or any files that may be included in ueventd, such as devices.cpp and util.cpp.
+// TODO: Have an Init class and remove all globals.
+extern std::string default_console;
+extern std::vector<std::string> late_import_paths;
 
-#define ERROR(x...)   log_write(3, "<3>init: " x)
-#define NOTICE(x...)  log_write(5, "<5>init: " x)
-#define INFO(x...)    log_write(6, "<6>init: " x)
+Parser CreateParser(ActionManager& action_manager, ServiceList& service_list);
+Parser CreateServiceOnlyParser(ServiceList& service_list);
 
-#define LOG_DEFAULT_LEVEL  3  /* messages <= this level are logged */
-#define LOG_UEVENTS        0  /* log uevent messages if 1. verbose */
+void HandleControlMessage(const std::string& msg, const std::string& arg, pid_t pid);
 
-unsigned int decode_uid(const char *s);
+void property_changed(const std::string& name, const std::string& value);
 
-struct listnode
-{
-    struct listnode *next;
-    struct listnode *prev;
-};
+bool start_waiting_for_property(const char *name, const char *value);
 
-#define node_to_item(node, container, member) \
-    (container *) (((char*) (node)) - offsetof(container, member))
+void DumpState();
 
-#define list_declare(name) \
-    struct listnode name = { \
-        .next = &name, \
-        .prev = &name, \
-    }
+void ResetWaitForProp();
 
-#define list_for_each(node, list) \
-    for (node = (list)->next; node != (list); node = node->next)
+int SecondStageMain(int argc, char** argv);
 
-void list_init(struct listnode *list);
-void list_add_tail(struct listnode *list, struct listnode *item);
-void list_remove(struct listnode *item);
+}  // namespace init
+}  // namespace android
 
-#define list_empty(list) ((list) == (list)->next)
-#define list_head(list) ((list)->next)
-#define list_tail(list) ((list)->prev)
-
-struct command
-{
-        /* list of commands in an action */
-    struct listnode clist;
-
-    int (*func)(int nargs, char **args);
-    int nargs;
-    char *args[1];
-};
-    
-struct action {
-        /* node in list of all actions */
-    struct listnode alist;
-        /* node in the queue of pending actions */
-    struct listnode qlist;
-        /* node in list of actions for a trigger */
-    struct listnode tlist;
-
-    unsigned hash;
-    const char *name;
-    
-    struct listnode commands;
-    struct command *current;
-};
-
-struct socketinfo {
-    struct socketinfo *next;
-    const char *name;
-    const char *type;
-    uid_t uid;
-    gid_t gid;
-    int perm;
-};
-
-struct svcenvinfo {
-    struct svcenvinfo *next;
-    const char *name;
-    const char *value;
-};
-
-#define SVC_DISABLED    0x01  /* do not autostart with class */
-#define SVC_ONESHOT     0x02  /* do not restart on exit */
-#define SVC_RUNNING     0x04  /* currently active */
-#define SVC_RESTARTING  0x08  /* waiting to restart */
-#define SVC_CONSOLE     0x10  /* requires console */
-#define SVC_CRITICAL    0x20  /* will reboot into recovery if keeps crashing */
-
-#define NR_SVC_SUPP_GIDS 6    /* six supplementary groups */
-
-struct service {
-        /* list of all services */
-    struct listnode slist;
-
-    const char *name;
-    const char *classname;
-
-    unsigned flags;
-    pid_t pid;
-    time_t time_started;    /* time of last start */
-    time_t time_crashed;    /* first crash within inspection window */
-    int nr_crashed;         /* number of times crashed within window */
-    
-    uid_t uid;
-    gid_t gid;
-    gid_t supp_gids[NR_SVC_SUPP_GIDS];
-    size_t nr_supp_gids;
-
-    struct socketinfo *sockets;
-    struct svcenvinfo *envvars;
-
-    int nargs;
-    char *args[1];
-    struct action onrestart;  /* Actions to execute on restart. */
-};
-
-int parse_config_file(const char *fn);
-
-struct service *service_find_by_name(const char *name);
-struct service *service_find_by_pid(pid_t pid);
-void service_for_each_class(const char *classname,
-                            void (*func)(struct service *svc));
-void service_for_each_flags(unsigned matchflags,
-                            void (*func)(struct service *svc));
-void service_stop(struct service *svc);
-void service_start(struct service *svc);
-void property_changed(const char *name, const char *value);
-
-struct action *action_remove_queue_head(void);
-void action_add_queue_tail(struct action *act);
-void action_for_each_trigger(const char *trigger,
-                             void (*func)(struct action *act));
-void queue_property_triggers(const char *name, const char *value);
-void queue_all_property_triggers();
-
-#define INIT_IMAGE_FILE	"/initlogo.rle"
-
-int load_565rle_image( char *file_name );
-
-#endif	/* _INIT_INIT_H */
+#endif  /* _INIT_INIT_H */
