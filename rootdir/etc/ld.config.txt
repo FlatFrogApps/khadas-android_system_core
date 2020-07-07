@@ -405,6 +405,7 @@ namespace.default.visible = true
 
 namespace.default.search.paths  = /odm/${LIB}
 namespace.default.search.paths += /vendor/${LIB}
+namespace.default.search.paths += /system/${LIB}
 
 namespace.default.permitted.paths  = /odm
 namespace.default.permitted.paths += /vendor
