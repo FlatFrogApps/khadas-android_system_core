@@ -311,8 +311,9 @@ void HandleControlMessage(const std::string& msg, const std::string& name, pid_t
     } else {
         process_cmdline = "unknown process";
     }
-
-    LOG(INFO) << "Received control message '" << msg << "' for '" << name << "' from pid: " << pid
+	
+	if(strstr(name.c_str(), "slot1") == NULL)
+    	LOG(INFO) << "Received control message '" << msg << "' for '" << name << "' from pid: " << pid
               << " (" << process_cmdline << ")";
 
     const ControlMessageFunction& function = it->second;
@@ -333,7 +334,8 @@ void HandleControlMessage(const std::string& msg, const std::string& name, pid_t
     }
 
     if (svc == nullptr) {
-        LOG(ERROR) << "Could not find '" << name << "' for ctl." << msg;
+		if(strstr(name.c_str(), "slot1") == NULL)
+        	LOG(ERROR) << "Could not find '" << name << "' for ctl." << msg;
         return;
     }
 
