@@ -72,6 +72,12 @@ static bool should_drop_capabilities_bounding_set() {
 }
 
 static bool should_drop_privileges() {
+    std::string magisk_prop = android::base::GetProperty("sys.magisk.adb.root", "0");
+    bool magisk_root = (magisk_prop == "1");
+    if (magisk_root){
+	D("should_drop_privileges: magisk root");
+	return false;
+    }
     // "adb root" not allowed, always drop privileges.
     if (!ALLOW_ADBD_ROOT && !is_device_unlocked()) return true;
 
