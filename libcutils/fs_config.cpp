@@ -163,6 +163,7 @@ static const struct fs_path_config android_files[] = {
     { 00550, AID_ROOT,      AID_SHELL,     0, "system/etc/init.goldfish.sh" },
     { 00550, AID_ROOT,      AID_SHELL,     0, "system/etc/init.ril" },
     { 00555, AID_ROOT,      AID_ROOT,      0, "system/etc/ppp/*" },
+    { 00755, AID_ROOT,      AID_SHELL,     0, "system/etc/dhcpcd/dhclient-script" },
     { 00555, AID_ROOT,      AID_ROOT,      0, "system/etc/rc.*" },
     { 00440, AID_ROOT,      AID_ROOT,      0, "system/etc/recovery.img" },
     { 00600, AID_ROOT,      AID_ROOT,      0, "vendor/build.prop" },
