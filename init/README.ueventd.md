@@ -136,3 +136,13 @@ be done for devices that do not use genfscon, which is the recommended method fo
 nodes. To enable this option, use the below line in a ueventd.rc script:
 
     parallel_restorecon enabled
+
+Do parallel restorecon to speed up boot process, subdirectories under `/sys`
+can be sliced by ueventd.rc, and run on multiple process.
+    parallel_restorecon_dir <directory>
+
+For example
+    parallel_restorecon_dir /sys
+    parallel_restorecon_dir /sys/devices
+    parallel_restorecon_dir /sys/devices/platform
+    parallel_restorecon_dir /sys/devices/platform/soc
