@@ -58,8 +58,13 @@ subsystem sound
 /dev/tun                  0660   system     vpn
 
 /dev/ttyS4                0777   system     system
+# add by tenk to support EM06 4G
+/dev/ttyUSB*              0777   radio      radio
+/dev/ppp                  0777   radio      radio
+/dev/qcqmi*               0777   radio      radio
+/dev/cdc-wdm*               0777   radio      radio
 # CDMA radio interface MUX
-/dev/ppp                  0660   radio      vpn
+# /dev/ppp                  0660   radio      vpn
 
 # sysfs properties
 /sys/devices/platform/trusty.*      trusty_version        0440  root   log

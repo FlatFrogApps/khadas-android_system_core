@@ -694,8 +694,15 @@ ifc_configure(const char *ifname,
         in_addr_t dns2) {
 
     char dns_prop_name[PROPERTY_KEY_MAX];
-
+printerr("hlm 4g ifname %s\n", ifname);
+    if (strcmp(ifname, "usb0") == 0) {
+       snprintf(dns_prop_name, sizeof(dns_prop_name), "net.%s.dns1", ifname);
+       property_set(dns_prop_name, dns1 ? ipaddr_to_string(dns1) : "");
+       snprintf(dns_prop_name, sizeof(dns_prop_name), "net.%s.dns2", ifname);
+       property_set(dns_prop_name, dns2 ? ipaddr_to_string(dns2) : "");
+    }
     ifc_init();
+
 
     if (ifc_up(ifname)) {
         printerr("failed to turn on interface %s: %s\n", ifname, strerror(errno));
@@ -720,10 +727,11 @@ ifc_configure(const char *ifname,
 
     ifc_close();
 
-    snprintf(dns_prop_name, sizeof(dns_prop_name), "net.%s.dns1", ifname);
-    property_set(dns_prop_name, dns1 ? ipaddr_to_string(dns1) : "");
-    snprintf(dns_prop_name, sizeof(dns_prop_name), "net.%s.dns2", ifname);
-    property_set(dns_prop_name, dns2 ? ipaddr_to_string(dns2) : "");
-
+    if (strcmp(ifname, "usb0") != 0) {
+        snprintf(dns_prop_name, sizeof(dns_prop_name), "net.%s.dns1", ifname);
+        property_set(dns_prop_name, dns1 ? ipaddr_to_string(dns1) : "");
+        snprintf(dns_prop_name, sizeof(dns_prop_name), "net.%s.dns2", ifname);
+        property_set(dns_prop_name, dns2 ? ipaddr_to_string(dns2) : "");
+    }
     return 0;
 }
