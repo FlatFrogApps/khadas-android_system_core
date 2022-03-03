@@ -60,6 +60,7 @@ subsystem sound
 /dev/ttyS4                0777   system     system
 # add by tenk to support EM06 4G
 /dev/ttyUSB*              0777   radio      radio
+/dev/mhi_*              0777   radio      radio
 /dev/ppp                  0777   radio      radio
 /dev/qcqmi*               0777   radio      radio
 /dev/cdc-wdm*               0777   radio      radio
