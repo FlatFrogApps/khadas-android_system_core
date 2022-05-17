@@ -142,6 +142,9 @@ class UnwinderFromPid : public Unwinder {
   virtual ~UnwinderFromPid() = default;
 
   bool Init(ArchEnum arch);
+  pid_t get_pid(void) {
+    return pid_;
+  }
 
  private:
   pid_t pid_;
