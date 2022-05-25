@@ -1015,6 +1015,27 @@ static void ExportKernelBootProps() {
     }
 }
 
+static void export_lcd_status() {
+    int fd;
+    char buf[2048];
+    if ((fd = open("/proc/cmdline", O_RDONLY)) < 0) {
+       LOG(FATAL) << "Failed to export lcd status!";
+       InitPropertySet("sys.lcd.exist", "0");
+       return;
+    }
+    read(fd, buf, sizeof(buf) - 1);
+    if(strstr(buf,"vout=panel1") != NULL) {
+        InitPropertySet("sys.lcd.exist", "0");
+        InitPropertySet("persist.vendor.hwc.lcdpath", "1");
+        LOG(INFO) << "switch vbo!";
+    } else {
+        InitPropertySet("sys.lcd.exist", "1");
+        InitPropertySet("persist.vendor.hwc.lcdpath", "0");
+        LOG(INFO) << "switch dsi lcd!";
+    }
+    close(fd);
+}
+
 static void ProcessKernelDt() {
     if (!is_android_dt_value_expected("compatible", "android,firmware")) {
         return;
@@ -1082,6 +1103,7 @@ void PropertyInit() {
     ExportKernelBootProps();
 
     PropertyLoadBootDefaults();
+    export_lcd_status();
 }
 
 static void HandleInitSocket() {
