@@ -1027,11 +1027,23 @@ static void export_lcd_status() {
     if(strstr(buf,"vout=panel1") != NULL) {
         InitPropertySet("sys.lcd.exist", "0");
         InitPropertySet("persist.vendor.hwc.lcdpath", "1");
+		InitPropertySet("ro.minui.default_rotation", "ROTATION_NONE");
+		InitPropertySet("ro.vendor.sf.rotation", "0");
+		InitPropertySet("ro.surface_flinger.primary_display_orientation", "ORIENTATION_0");
+		InitPropertySet("ro.surface_flinger.max_graphics_width", "3840");
+		InitPropertySet("ro.surface_flinger.max_graphics_height", "2160");
         LOG(INFO) << "switch vbo!";
     } else {
         InitPropertySet("sys.lcd.exist", "1");
         InitPropertySet("persist.vendor.hwc.lcdpath", "0");
+		InitPropertySet("ro.minui.default_rotation", "ROTATION_RIGHT");
+		InitPropertySet("ro.vendor.sf.rotation", "270");
+		InitPropertySet("ro.surface_flinger.primary_display_orientation", "ORIENTATION_270");
+		InitPropertySet("ro.surface_flinger.max_graphics_width", "2160");
+		InitPropertySet("ro.surface_flinger.max_graphics_height", "3840");
         LOG(INFO) << "switch dsi lcd!";
+
+		//LOG(ERROR) << "Error setting property 'ro.build.fingerprint': err=" << res;
     }
     close(fd);
 }
