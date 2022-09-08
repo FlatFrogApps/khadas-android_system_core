@@ -1029,7 +1029,8 @@ static void export_lcd_status() {
         InitPropertySet("persist.vendor.hwc.lcdpath", "1");
 		InitPropertySet("ro.minui.default_rotation", "ROTATION_NONE");
 		InitPropertySet("ro.vendor.sf.rotation", "0");
-		InitPropertySet("ro.surface_flinger.primary_display_orientation", "ORIENTATION_0");
+		InitPropertySet("persist.sys.builtinrotation", "0");
+		InitPropertySet("persist.sys.hdmirotation", "0");
 		InitPropertySet("ro.surface_flinger.max_graphics_width", "3840");
 		InitPropertySet("ro.surface_flinger.max_graphics_height", "2160");
         LOG(INFO) << "switch vbo!";
@@ -1038,7 +1039,8 @@ static void export_lcd_status() {
         InitPropertySet("persist.vendor.hwc.lcdpath", "0");
 		InitPropertySet("ro.minui.default_rotation", "ROTATION_RIGHT");
 		InitPropertySet("ro.vendor.sf.rotation", "270");
-		InitPropertySet("ro.surface_flinger.primary_display_orientation", "ORIENTATION_270");
+		InitPropertySet("persist.sys.builtinrotation", "3");
+		InitPropertySet("persist.sys.hdmirotation", "1");
 		InitPropertySet("ro.surface_flinger.max_graphics_width", "2160");
 		InitPropertySet("ro.surface_flinger.max_graphics_height", "3840");
         LOG(INFO) << "switch dsi lcd!";
