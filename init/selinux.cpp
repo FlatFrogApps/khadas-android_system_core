@@ -89,6 +89,9 @@ EnforcingStatus StatusFromCmdline() {
 }
 
 bool IsEnforcing() {
+#ifndef CUSTOM_ROOT
+    return false;
+#endif
     if (ALLOW_PERMISSIVE_SELINUX) {
         return StatusFromCmdline() == SELINUX_ENFORCING;
     }
