@@ -399,6 +399,23 @@ static void export_lcd_status() {
     close(fd);
 }
 
+static void export_ext_board_status() {
+    int fd;
+    char buf[2048];
+    if ((fd = open("/proc/cmdline", O_RDONLY)) < 0) {
+       LOG(FATAL) << "Failed to export ext board status!";
+       property_set("sys.extboard.exist", "0");
+       return;
+    }
+    read(fd, buf, sizeof(buf) - 1);
+    if(strstr(buf,"ext_board_exist=1") != NULL) {
+        property_set("sys.extboard.exist", "1");
+    } else {
+        property_set("sys.extboard.exist", "0");
+    }
+    close(fd);
+}
+
 static void export_kernel_boot_props() {
     struct {
         const char *src_prop;
@@ -695,6 +712,7 @@ int main(int argc, char** argv) {
     export_kernel_boot_props();
 
     export_lcd_status();
+    export_ext_board_status();
     // Make the time that init started available for bootstat to log.
     property_set("ro.boottime.init", getenv("INIT_STARTED_AT"));
     property_set("ro.boottime.init.selinux", getenv("INIT_SELINUX_TOOK"));
