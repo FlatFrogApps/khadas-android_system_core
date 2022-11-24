@@ -1020,12 +1020,12 @@ static void export_lcd_status() {
     char buf[2048];
     if ((fd = open("/proc/cmdline", O_RDONLY)) < 0) {
        LOG(FATAL) << "Failed to export lcd status!";
-       InitPropertySet("sys.lcd.exist", "0");
+       InitPropertySet("sys.lcd.reverse", "0");
        return;
     }
     read(fd, buf, sizeof(buf) - 1);
     if(strstr(buf,"vout=panel1") != NULL) {
-        InitPropertySet("sys.lcd.exist", "0");
+        InitPropertySet("sys.lcd.reverse", "0");
         InitPropertySet("persist.vendor.hwc.lcdpath", "1");
 		InitPropertySet("ro.minui.default_rotation", "ROTATION_NONE");
 		InitPropertySet("ro.vendor.sf.rotation", "0");
@@ -1033,15 +1033,24 @@ static void export_lcd_status() {
 		InitPropertySet("ro.surface_flinger.max_graphics_width", "3840");
 		InitPropertySet("ro.surface_flinger.max_graphics_height", "2160");
         LOG(INFO) << "switch vbo!";
-    } else {
-        InitPropertySet("sys.lcd.exist", "1");
+    } else if (strstr(buf,"khadas_mipi_id=2") != NULL) {
+        InitPropertySet("sys.lcd.reverse", "2");
+        InitPropertySet("persist.vendor.hwc.lcdpath", "0");
+		InitPropertySet("ro.minui.default_rotation", "ROTATION_NONE");
+		InitPropertySet("ro.vendor.sf.rotation", "0");
+		InitPropertySet("ro.surface_flinger.primary_display_orientation", "ORIENTATION_0");
+		InitPropertySet("ro.surface_flinger.max_graphics_width", "3840");//1920*2
+		InitPropertySet("ro.surface_flinger.max_graphics_height", "2400");//1200*2
+        LOG(INFO) << "switch TS101 LCD!";
+    }else {
+        InitPropertySet("sys.lcd.reverse", "1");
         InitPropertySet("persist.vendor.hwc.lcdpath", "0");
 		InitPropertySet("ro.minui.default_rotation", "ROTATION_RIGHT");
 		InitPropertySet("ro.vendor.sf.rotation", "270");
 		InitPropertySet("ro.surface_flinger.primary_display_orientation", "ORIENTATION_270");
 		InitPropertySet("ro.surface_flinger.max_graphics_width", "2160");
 		InitPropertySet("ro.surface_flinger.max_graphics_height", "3840");
-        LOG(INFO) << "switch dsi lcd!";
+        LOG(INFO) << "switch TS050 LCD!";
 
 		//LOG(ERROR) << "Error setting property 'ro.build.fingerprint': err=" << res;
     }
