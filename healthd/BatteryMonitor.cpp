@@ -105,7 +105,7 @@ int BatteryMonitor::getBatteryStatus(const char* status) {
 
     ret = mapSysfsString(status, batteryStatusMap);
     if (ret < 0) {
-        KLOG_WARNING(LOG_TAG, "Unknown battery status '%s'\n", status);
+        //KLOG_WARNING(LOG_TAG, "Unknown battery status '%s'\n", status);
         ret = BATTERY_STATUS_UNKNOWN;
     }
 
@@ -131,7 +131,7 @@ int BatteryMonitor::getBatteryHealth(const char* status) {
 
     ret = mapSysfsString(status, batteryHealthMap);
     if (ret < 0) {
-        KLOG_WARNING(LOG_TAG, "Unknown battery health '%s'\n", status);
+        //KLOG_WARNING(LOG_TAG, "Unknown battery health '%s'\n", status);
         ret = BATTERY_HEALTH_UNKNOWN;
     }
 
@@ -170,7 +170,7 @@ BatteryMonitor::PowerSupplyType BatteryMonitor::readPowerSupplyType(const String
 
     ret = mapSysfsString(buf.c_str(), supplyTypeMap);
     if (ret < 0) {
-        KLOG_WARNING(LOG_TAG, "Unknown power supply type '%s'\n", buf.c_str());
+        //KLOG_WARNING(LOG_TAG, "Unknown power supply type '%s'\n", buf.c_str());
         ret = ANDROID_POWER_SUPPLY_TYPE_UNKNOWN;
     }
 
@@ -328,7 +328,7 @@ bool BatteryMonitor::update(void) {
                  props.chargerUsbOnline ? "u" : "",
                  props.chargerWirelessOnline ? "w" : "");
 
-        KLOG_WARNING(LOG_TAG, "%s\n", dmesgline);
+        //KLOG_WARNING(LOG_TAG, "%s\n", dmesgline);
     }
 
     healthd_mode_ops->battery_update(&props);
@@ -606,10 +606,10 @@ void BatteryMonitor::init(struct healthd_config *hc) {
     // Typically the case for devices which do not have a battery and
     // and are always plugged into AC mains.
     if (!mBatteryDevicePresent) {
-        KLOG_WARNING(LOG_TAG, "No battery devices found\n");
+        //KLOG_WARNING(LOG_TAG, "No battery devices found\n");
         hc->periodic_chores_interval_fast = -1;
         hc->periodic_chores_interval_slow = -1;
-    } else {
+    } /*else {
         if (mHealthdConfig->batteryStatusPath.isEmpty())
             KLOG_WARNING(LOG_TAG, "BatteryStatusPath not found\n");
         if (mHealthdConfig->batteryHealthPath.isEmpty())
@@ -630,7 +630,7 @@ void BatteryMonitor::init(struct healthd_config *hc) {
             KLOG_WARNING(LOG_TAG, "BatteryFullChargePath not found\n");
         if (mHealthdConfig->batteryCycleCountPath.isEmpty())
             KLOG_WARNING(LOG_TAG, "BatteryCycleCountPath not found\n");
-    }
+    }*/
 
     if (property_get("ro.boot.fake_battery", pval, NULL) > 0
                                                && strtol(pval, NULL, 10) != 0) {
