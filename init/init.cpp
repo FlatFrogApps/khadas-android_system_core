@@ -391,6 +391,13 @@ static void export_lcd_status() {
         property_set("sys.lcd.exist", "1");
       //  property_set("media.omx.dw", "1");
       //  property_set("vendor.afbcd.enable", "0");
+        if (strstr(buf,"khadas_mipi_id=2") != NULL) {
+            property_set("sys.lcd.reverse", "2");
+            LOG(INFO) << "switch TS101 LCD!";
+        } else {
+            property_set("sys.lcd.reverse", "1");
+            LOG(INFO) << "switch old_TS050 or new_TS050 LCD!";
+        }
     } else {
         property_set("sys.lcd.exist", "0");
       //  property_set("media.omx.dw", "0");
