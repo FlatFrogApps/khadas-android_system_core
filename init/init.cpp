@@ -376,6 +376,23 @@ static void export_oem_lock_status() {
     }
 }
 
+static void export_camera_status() {
+    int fd;
+    char buf[2048];
+    if ((fd = open("/proc/cmdline", O_RDONLY)) < 0) {
+       LOG(FATAL) << "Failed to export camera status!";
+       property_set("sys.camera.exist", "0");
+       return;
+    }
+    read(fd, buf, sizeof(buf) - 1);
+    if(strstr(buf,"khadas_camera_id=1") != NULL) {
+        property_set("sys.camera.exist", "1");//OS08A10
+    } if (strstr(buf,"khadas_camera_id=2") != NULL) {
+        property_set("sys.camera.exist", "2");//IMX415
+    }
+    close(fd);
+}
+
 static void export_lcd_status() {
     int fd;
     char buf[2048];
@@ -718,6 +735,7 @@ int main(int argc, char** argv) {
     // used by init as well as the current required properties.
     export_kernel_boot_props();
 
+    export_camera_status();
     export_lcd_status();
     export_ext_board_status();
     // Make the time that init started available for bootstat to log.
