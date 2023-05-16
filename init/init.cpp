@@ -440,6 +440,29 @@ static void export_kernel_boot_props() {
 			//KHADAS_EDGE;
 			property_set("sys.board.type", "1");
 		}
+
+	    if(strstr(cmdline,"khadas_mipi_id=2") != NULL) {//TS101
+	        property_set("sys.lcd.id", "2");
+	        property_set("vendor.hwc.device.primary", "DSI");
+			property_set("vendor.hwc.device.extend", "HDMI-A,DP");
+			property_set("persist.sys.rotation.einit", "0");
+			//property_set("persist.vendor.framebuffer.main", "1920x1200@60");
+	        LOG(INFO) << "switch TS101!";
+	    }else if(strstr(cmdline,"khadas_mipi_id=1") != NULL || strstr(cmdline,"khadas_mipi_id=3") != NULL) {//old or new TS050
+	        property_set("sys.lcd.id", "1");
+	        property_set("vendor.hwc.device.primary", "HDMI-A,DP");
+			property_set("vendor.hwc.device.extend", "DSI");
+			property_set("persist.sys.rotation.einit", "3");
+			//property_set("persist.vendor.framebuffer.main", "1920x1080@60");
+	        LOG(INFO) << "switch TS050!";
+	    }else {//
+	        property_set("sys.lcd.id", "0");
+	        property_set("vendor.hwc.device.primary", "HDMI-A,DP");
+			property_set("vendor.hwc.device.extend", "DSI");
+			property_set("persist.sys.rotation.einit", "0");
+			//property_set("persist.vendor.framebuffer.main", "1920x1080@60");
+	    }
+
         std::string value = GetProperty(prop.src_prop, prop.default_value);
         if (value != UNSET)
             property_set(prop.dst_prop, value);
