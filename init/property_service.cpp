@@ -1273,7 +1273,10 @@ static void export_lcd_status() {
 		InitPropertySet("vendor.hwc.device.extend", "DSI,DP");
 		InitPropertySet("persist.sys.rotation.einit-1", "0");
 		InitPropertySet("persist.sys.rotation.einit-2", "0");
-		InitPropertySet("persist.vendor.framebuffer.main", "1920x1080@60");
+		std::string value = GetProperty("persist.vendor.framebuffer.main", "1920x1080@60");
+		LOG(INFO) << "hlm switch value=" + value;
+		if (strstr(buf,"hdmimode=3840x2160") != NULL || strstr(buf,"hdmimode=7680x4320") != NULL)
+			InitPropertySet("persist.vendor.framebuffer.main", "1920x1080@60");
     }
     close(fd);
 }
