@@ -738,16 +738,23 @@ struct UsbFfsConnection : public Connection {
 };
 
 static void usb_ffs_open_thread() {
+    int fail_count = 0;
     adb_thread_setname("usb ffs open");
-
+    
     while (true) {
         unique_fd control;
         unique_fd bulk_out;
         unique_fd bulk_in;
         if (!open_functionfs(&control, &bulk_out, &bulk_in)) {
             std::this_thread::sleep_for(1s);
+            ++fail_count;
+            if (fail_count > 20) {
+                LOG(INFO) << "usb_ffs_open_thread: Failed 20 times, assuming USB gadget (Middleman) is active, won't try again.";
+                return;
+            }
             continue;
         }
+        fail_count = 0;
 
         atransport* transport = new atransport();
         transport->serial = "UsbFfs";
